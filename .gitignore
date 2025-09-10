@@ -1,0 +1,8 @@
+*.zip
+.vscode
+build/
+*.pdx
+pdex.bin
+pdex.so
+pdex.dylib
+pdex.dll
