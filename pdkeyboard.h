@@ -12,17 +12,18 @@ enum PDKeyboardState {
     PDKBS_ANIMATION_OPENING,
     PDKBS_ANIMATION_CLOSING,
 };
+typedef enum PDKeyboardState PDKeyboardState;
 
 enum PDKeyboardFlags {
     /* user can confirm input (closes keyboard) */
     PDKBF_CONFIRM = 0x1000,
-    
+
     /* user can cancel out (closes keyboard) */
     PDKBF_CANCEL = 0x2000,
-    
+
     /* Audio feedback */
     PDKBF_SOUND = 0x8000,
-    
+
     /* Allowed Characters */
     PDKBF_LATIN_UPPERCASE = 1, /* allow entering uppercase latin alphabet (A-Z) */
     PDKBF_LATIN_LOWERCASE = 2, /* allow entering lowercase latin alphabet (a-z) */
@@ -30,17 +31,17 @@ enum PDKeyboardFlags {
     PDKBF_LATIN_UNDERSCORE = 8, /* allow underscore */
     PDKBF_LATIN_HYPHEN = 0x10, /* allow - */
     PDKBF_LATIN_PUNCTUATION = 0x38, /* allow common punctuation  !?,.-_:;/'"() (including hyphen and underscore) */
-    
+
     PDKBF_NUMERIC = 0x40, /* allow numbers 0-9 */
     PDKBF_SYMBOLS = 0xB8, /* allow various special symbols @#$%^&*{}[]+~<> (including punctuation) */
-    
+
     /* The following are ignored if the encoding scheme is set to ASCII. */
     PDKBF_JA_HIRAGANA = 0x10000,
     PDKBF_JA_KATAKANA = 0x20000,
     PDKBF_JA_KANA = PDKBF_JA_HIRAGANA | PDKBF_JA_KATAKANA,
     PDKBF_JA_PUNCTUATION = 0x80000,
     PDKBF_JA_ALL = PDKBF_JA_PUNCTUATION | PDKBF_JA_KANA,
-    
+
     PDKBF_DEFAULT
         = PDKBF_CONFIRM | PDKBF_CANCEL
         | PDKBF_SOUND
@@ -49,6 +50,7 @@ enum PDKeyboardFlags {
         | PDKBF_SYMBOLS
         | PDKBF_JA_ALL
 };
+typedef enum PDKeyboardFlags PDKeyboardFlags;
 
 /* You only need to create a keyboard once.
  * 
@@ -97,9 +99,6 @@ void pdkb_set_content(PDKeyboard* kb, const char* content);
 
 /* Gets the current string output of the keyboard. */
 const char* pdkb_get_content(const PDKeyboard* kb);
-
-/* As above, but replaces all but the last characters with asterisks. */
-const char* pdkb_get_content_hidden(const PDKeyboard* kb);
 
 /* Returns length of content in bytes */
 unsigned pdkb_get_content_length_bytes(const PDKeyboard* kb);
