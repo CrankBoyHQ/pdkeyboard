@@ -27,9 +27,9 @@ enum PDKeyboardFlags {
     /* Allowed Characters */
     PDKBF_LATIN_UPPERCASE = 1, /* allow entering uppercase latin alphabet (A-Z) */
     PDKBF_LATIN_LOWERCASE = 2, /* allow entering lowercase latin alphabet (a-z) */
-    PDKBF_LATIN_SPACE = 4, /* allow spaces */
-    PDKBF_LATIN_UNDERSCORE = 8, /* allow underscore */
-    PDKBF_LATIN_HYPHEN = 0x10, /* allow - */
+    PDKBF_SPACE = 4, /* allow spaces */
+    PDKBF_UNDERSCORE = 8, /* allow underscore */
+    PDKBF_HYPHEN = 0x10, /* allow - */
     PDKBF_LATIN_PUNCTUATION = 0x38, /* allow common punctuation  !?,.-_:;/'"() (including hyphen and underscore) */
 
     PDKBF_NUMERIC = 0x40, /* allow numbers 0-9 */
@@ -46,7 +46,7 @@ enum PDKeyboardFlags {
         = PDKBF_CONFIRM | PDKBF_CANCEL
         | PDKBF_SOUND
         | PDKBF_LATIN_UPPERCASE | PDKBF_LATIN_LOWERCASE
-        | PDKBF_LATIN_SPACE | PDKBF_NUMERIC
+        | PDKBF_SPACE | PDKBF_NUMERIC
         | PDKBF_SYMBOLS
         | PDKBF_JA_ALL
 };

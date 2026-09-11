@@ -6,11 +6,73 @@
 
 static PlaydateAPI* pd;
 static LCDFont* font;
+static bool is_jp;
 
 const static uint8_t lcd50[16] = {
     0xAA, 0x55, 0xAA, 0x55, 0xAA, 0x55, 0xAA, 0x55,
     0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
 };
+
+static unsigned char backspace_data[] = {
+    0xFF, 0xFF, 0xFC, 0x00, 0xF8, 0x00, 0xF3, 0xFC,
+    0xE6, 0xFE, 0xCE, 0x72, 0x9F, 0x26, 0x3F, 0x8E,
+    0x3F, 0x1E, 0x9E, 0x4E, 0xCC, 0xE6, 0xE7, 0xF6,
+    0xF3, 0xFC, 0xF8, 0x00, 0xFC, 0x00, 0xFF, 0xFF
+};
+static unsigned backspace_width = 16;
+static unsigned backspace_height = 16;
+static LCDBitmap* backspace_img;
+
+static unsigned char confirm_data[] = {
+    ~0x00, ~0x00, ~0x00, ~0x06, ~0x00, ~0x0E, ~0x00, ~0x0C,
+    ~0x00, ~0x18, ~0x00, ~0x38, ~0x00, ~0x30, ~0x00, ~0x60,
+    ~0x00, ~0x60, ~0x00, ~0xC0, ~0x00, ~0xC0, ~0x61, ~0x80,
+    ~0x79, ~0x80, ~0x1F, ~0x80, ~0x07, ~0x00, ~0x03, ~0x00
+};
+static unsigned confirm_width = 16;
+static unsigned confirm_height = 16;
+static unsigned char confirm_jp_data[] = {
+    ~0x07, ~0xE0, ~0x1F, ~0xF8, ~0x38, ~0x1C, ~0x60, ~0x06,
+    ~0x61, ~0x86, ~0xC0, ~0xC3, ~0xC0, ~0x63, ~0xCF, ~0xF3,
+    ~0xCF, ~0xF3, ~0xC0, ~0x63, ~0xC0, ~0xC3, ~0x61, ~0x86,
+    ~0x60, ~0x06, ~0x38, ~0x1C, ~0x1F, ~0xF8, ~0x07, ~0xE0
+};
+static unsigned confirm_jp_width = 16;
+static unsigned confirm_jp_height = 16;
+static LCDBitmap* confirm_img;
+
+static unsigned char switch_data[] = {
+    ~0x00, ~0x00, ~0x18, ~0x00, ~0x0C, ~0x00, ~0xFF, ~0x80,
+    ~0x63, ~0x00, ~0x63, ~0x3C, ~0x32, ~0x66, ~0x1C, ~0x66,
+    ~0x0C, ~0x66, ~0x36, ~0xFF, ~0x62, ~0xC3, ~0x00, ~0xC3,
+    ~0x00, ~0xC3, ~0x00, ~0x00, ~0x00, ~0x00, ~0x00, ~0x00
+};
+static unsigned switch_width = 16;
+static unsigned switch_height = 16;
+static LCDBitmap* switch_img;
+
+static LCDBitmap* _pdkb_load_image(const uint8_t* data, int width, int height)
+{
+    LCDBitmap* bm = pd->graphics->newBitmap(width, height, kColorBlack);
+    if (!bm) return NULL;
+
+    int rowbytes = 0;
+    uint8_t* mask = NULL;
+    uint8_t* pixels = NULL;
+    pd->graphics->getBitmapData(bm, NULL, NULL, &rowbytes, &mask, &pixels);
+
+    for (int y = 0; y < height; ++y)
+    {
+        int src_off = y * ((width + 7) / 8);
+        int dst_off = y * rowbytes;
+        int copy = rowbytes;
+        if (copy > (width + 7) / 8)
+            copy = (width + 7) / 8;
+        memcpy(pixels + dst_off, data + src_off, copy);
+    }
+
+    return bm;
+}
 
 enum PDKBPageType {
     PDKBP_None = 0,
@@ -60,13 +122,14 @@ typedef struct PDKeyboard {
 
     PDStringEncoding encoding;
 
+    bool is_jp_region;
 } PDKeyboard;
 
 
 
 static size_t _codepoint_next(const char* s, size_t offset, PDStringEncoding encoding);
 static size_t _codepoint_prev(const char* s, size_t offset, PDStringEncoding encoding);
-static void _pdkb_draw_key(uint32_t key, int kx, int ky, int kw, int kh, bool selected, bool down);
+static void _pdkb_draw_key(PDKeyboard* kb, uint32_t key, int kx, int ky, int kw, int kh, bool selected, bool down);
 
 size_t _codepoint_next(const char* s, size_t offset, PDStringEncoding encoding)
 {
@@ -288,7 +351,7 @@ static int _pdkb_get_key_offx(PDKeyboardPage* page, size_t row)
     return (LCD_COLUMNS % _pdkb_get_key_width(page, row)) / 2;
 }
 
-static void _pdkb_draw_key(uint32_t key, int kx, int ky, int kw, int kh, bool selected, bool down)
+static void _pdkb_draw_key(PDKeyboard* kb, uint32_t key, int kx, int ky, int kw, int kh, bool selected, bool down)
 {
     int r = 12;
     int margin = selected ? 2 : 1;
@@ -303,13 +366,52 @@ static void _pdkb_draw_key(uint32_t key, int kx, int ky, int kw, int kh, bool se
     pd->graphics->drawRoundRect(kx, ky, kw, kh, r, selected ? 2 : 1, kColorBlack);
     
     // TODO: special images.
-    if (key < 0x20) return;
-    
-    char buff[5];
-    memset(buff, 0, sizeof(buff));
-    _encode(key, kUTF8Encoding, buff);
-    int textwidth = pd->graphics->getTextWidth(font, buff, 1, kUTF8Encoding, 0);
-    pd->graphics->drawText(buff, 1, kUTF8Encoding, kx + kw/2 - textwidth/2, ky + kh/2-7);
+    if (key < 0x20)
+    {
+        LCDBitmap* img = NULL;
+        
+        #define CACHEIMG(OUT, VAR, NAME) \
+            if (!VAR##_img) VAR##_img = _pdkb_load_image(NAME##_data, NAME##_width, NAME##_height); \
+            OUT = VAR##_img;
+        
+        switch(key)
+        {
+        case KEY_BACKSPACE:
+            CACHEIMG(img, backspace, backspace);
+            break;
+        case KEY_CONFIRM:
+            if (kb->is_jp_region)
+            {
+                CACHEIMG(img, confirm, confirm_jp);
+            }
+            else
+            {
+                CACHEIMG(img, confirm, confirm);
+            }
+            break;
+        case KEY_SWITCH:
+            CACHEIMG(img, switch, switch)
+            break;
+        default:
+            break;
+        }
+        
+        if (img)
+        {
+            int w, h;
+            pd->graphics->getBitmapData(img, &w, &h, NULL, NULL, NULL);
+            pd->graphics->drawBitmap(img, kx + kw/2 - w/2, ky + kh/2 - h/2, kBitmapUnflipped);
+        }
+    }
+    else
+    {
+        // standard unicode
+        char buff[5];
+        memset(buff, 0, sizeof(buff));
+        _encode(key, kUTF8Encoding, buff);
+        int textwidth = pd->graphics->getTextWidth(font, buff, 1, kUTF8Encoding, 0);
+        pd->graphics->drawText(buff, 1, kUTF8Encoding, kx + kw/2 - textwidth/2, ky + kh/2-7);
+    }
     
     if (selected)
     {
@@ -358,7 +460,10 @@ static void _pdkb_draw(PDKeyboard* kb)
             size_t jw = 1;
             while (_pdkb_count_row_get_key(page, i, j + jw) == KEY_EXTEND) ++jw;
             bool sel = i == kb->sel_row && j == kb->sel_idx;
-            _pdkb_draw_key(key, kx, ky, (int)(kw * jw), row_h, sel, sel && kb->sel_down);
+            if (key != KEY_FILLER)
+            {
+                _pdkb_draw_key(kb, key, kx, ky, (int)(kw * jw), row_h, sel, sel && kb->sel_down);
+            }
             j += jw;
             kx += kw * jw;
         }
@@ -577,6 +682,11 @@ PDKeyboard* pdkb_new(PlaydateAPI* _pd, PDKeyboardFlags f)
 
     memset(kb, 0, sizeof(PDKeyboard));
     kb->flags = f;
+    kb->is_jp_region = pd->system->getLanguage() == kPDLanguageJapanese;
+    
+    int pagec = !!(f&(PDKBF_LATIN_LOWERCASE | PDKBF_LATIN_UPPERCASE))
+        +  !!(f & PDKBF_SYMBOLS) + !!(f & PDKBF_NUMERIC)
+        + !!(f & PDKBF_JA_HIRAGANA) + !!(f & PDKBF_JA_KATAKANA);
 
     if (f & PDKBF_SYMBOLS)
     {
@@ -606,8 +716,8 @@ PDKeyboard* pdkb_new(PlaydateAPI* _pd, PDKeyboardFlags f)
     {
         kb->pages[PDKBP_Latin].type = PDKBP_Latin;
         kb->current_page = PDKBP_Latin;
-
-        kb->pages[PDKBP_Latin].rows_c = 3;
+        
+        kb->pages[PDKBP_Latin].rows_c = 4;
         kb->pages[PDKBP_Latin].rows[0][0] = 'A';
         kb->pages[PDKBP_Latin].rows[0][1] = 'B';
         kb->pages[PDKBP_Latin].rows[0][2] = 'C';
@@ -616,28 +726,38 @@ PDKeyboard* pdkb_new(PlaydateAPI* _pd, PDKeyboardFlags f)
         kb->pages[PDKBP_Latin].rows[0][5] = 'F';
         kb->pages[PDKBP_Latin].rows[0][6] = 'G';
         kb->pages[PDKBP_Latin].rows[0][7] = 'H';
-        kb->pages[PDKBP_Latin].rows[0][8] = 'I';
-        kb->pages[PDKBP_Latin].rows[0][9] = KEY_BACKSPACE;
-        kb->pages[PDKBP_Latin].rows[1][0] = 'J';
-        kb->pages[PDKBP_Latin].rows[1][1] = 'K';
-        kb->pages[PDKBP_Latin].rows[1][2] = 'L';
-        kb->pages[PDKBP_Latin].rows[1][3] = 'M';
-        kb->pages[PDKBP_Latin].rows[1][4] = 'N';
-        kb->pages[PDKBP_Latin].rows[1][5] = 'O';
-        kb->pages[PDKBP_Latin].rows[1][6] = 'P';
-        kb->pages[PDKBP_Latin].rows[1][7] = 'Q';
-        kb->pages[PDKBP_Latin].rows[1][8] = 'R';
-        kb->pages[PDKBP_Latin].rows[1][9] = 'S';
-        kb->pages[PDKBP_Latin].rows[2][0] = KEY_SWITCH;
-        kb->pages[PDKBP_Latin].rows[2][1] = 'T';
-        kb->pages[PDKBP_Latin].rows[2][2] = 'U';
-        kb->pages[PDKBP_Latin].rows[2][3] = 'V';
-        kb->pages[PDKBP_Latin].rows[2][4] = 'W';
-        kb->pages[PDKBP_Latin].rows[2][5] = 'X';
-        kb->pages[PDKBP_Latin].rows[2][6] = 'Y';
-        kb->pages[PDKBP_Latin].rows[2][7] = 'Z';
-        kb->pages[PDKBP_Latin].rows[2][8] = KEY_CONFIRM;
-        kb->pages[PDKBP_Latin].rows[2][9] = KEY_EXTEND;
+        kb->pages[PDKBP_Latin].rows[0][8] = KEY_BACKSPACE;
+        kb->pages[PDKBP_Latin].rows[1][0] = 'I';
+        kb->pages[PDKBP_Latin].rows[1][1] = 'J';
+        kb->pages[PDKBP_Latin].rows[1][2] = 'K';
+        kb->pages[PDKBP_Latin].rows[1][3] = 'L';
+        kb->pages[PDKBP_Latin].rows[1][4] = 'M';
+        kb->pages[PDKBP_Latin].rows[1][5] = 'N';
+        kb->pages[PDKBP_Latin].rows[1][6] = 'O';
+        kb->pages[PDKBP_Latin].rows[1][7] = 'P';
+        kb->pages[PDKBP_Latin].rows[1][8] = 'Q';
+        kb->pages[PDKBP_Latin].rows[2][0] = 'R';
+        kb->pages[PDKBP_Latin].rows[2][1] = 'S';
+        kb->pages[PDKBP_Latin].rows[2][2] = 'T';
+        kb->pages[PDKBP_Latin].rows[2][3] = 'U';
+        kb->pages[PDKBP_Latin].rows[2][4] = 'V';
+        kb->pages[PDKBP_Latin].rows[2][5] = 'W';
+        kb->pages[PDKBP_Latin].rows[2][6] = 'X';
+        kb->pages[PDKBP_Latin].rows[2][7] = 'Y';
+        kb->pages[PDKBP_Latin].rows[2][8] = 'Z';
+        if (pagec >= 2)
+        {
+            kb->pages[PDKBP_Latin].rows[3][0] = KEY_SWITCH;
+        }
+        kb->pages[PDKBP_Latin].rows[3][1] = (kb->flags & PDKBF_SPACE) ? ' ' : KEY_FILLER;
+        kb->pages[PDKBP_Latin].rows[3][2] = KEY_EXTEND;
+        kb->pages[PDKBP_Latin].rows[3][3] = KEY_EXTEND;
+        kb->pages[PDKBP_Latin].rows[3][4] = KEY_EXTEND;
+        kb->pages[PDKBP_Latin].rows[3][5] = KEY_EXTEND;
+        if (kb->flags & PDKBF_CONFIRM)
+        {
+            kb->pages[PDKBP_Latin].rows[3][6] = KEY_CONFIRM;
+        }
     }
 
     if (kb->current_page == PDKBP_None)
