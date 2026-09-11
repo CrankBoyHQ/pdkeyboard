@@ -42,6 +42,7 @@ typedef struct PDKeyboardPage {
 typedef struct PDKeyboard {
     bool is_open;
     int result;
+    PDKeyboardFlags flags;
     char* content;
     size_t content_capacity;
     size_t content_max_bytes; // 0: unrestrained
@@ -392,6 +393,8 @@ void pdkb_update(PDKeyboard* kb, float dt)
 
     _pdkb_draw(kb);
     
+    if (!kb->is_open || kb->open_p < 0.5f) return;
+    
     PDKeyboardPage* page = &kb->pages[kb->current_page];
     
     if (page->type == PDKBP_None)
@@ -502,6 +505,66 @@ void pdkb_update(PDKeyboard* kb, float dt)
             }
         }
     }
+    
+    if ((released & kButtonB) && (kb->flags & PDKBF_CANCEL))
+    {
+        kb->result = -1;
+        kb->is_open = false;
+        return;
+    }
+    
+    // typing
+    if (released & kButtonA && kb->open_p == 1)
+    {
+        uint32_t key = _pdkb_count_row_get_key(page, kb->sel_row, kb->sel_idx);
+
+        if (key >= 0x20)
+        {
+            // printable character: append to content
+            char encoded[5];
+            size_t elen = _encode(key, kb->encoding, encoded);
+            if (elen > 0)
+            {
+                if (kb->content_max_codepoints > 0 &&
+                    kb->current_codepoint >= kb->content_max_codepoints)
+                {
+                    // limit reached
+                    // TODO: shake?
+                }
+                else if (kb->content_max_bytes > 0 && kb->current_byte + elen > kb->content_max_bytes)
+                {
+                    // TODO: shake?
+                }
+                else
+                {
+                    _pdkb_ensure_capacity(kb, kb->current_byte + elen + 1);
+                    memcpy(kb->content + kb->current_byte, encoded, elen);
+                    kb->current_byte += elen;
+                    kb->current_codepoint++;
+                    kb->content[kb->current_byte] = 0;
+                }
+            }
+        }
+        else if (key == KEY_BACKSPACE)
+        {
+            if (kb->current_byte > 0)
+            {
+                size_t prev_byte = _codepoint_prev(kb->content, kb->current_byte, kb->encoding);
+                kb->current_byte = prev_byte;
+                kb->content[kb->current_byte] = '\0';
+                kb->current_codepoint--;
+            }
+        }
+        else if (key == KEY_CONFIRM)
+        {
+            kb->result = 1;
+            pdkb_close(kb);
+        }
+        else if (key == KEY_SWITCH)
+        {
+            _pdkb_page_advance(kb);
+        }
+    }
 }
 
 PDKeyboard* pdkb_new(PlaydateAPI* _pd, PDKeyboardFlags f)
@@ -513,6 +576,7 @@ PDKeyboard* pdkb_new(PlaydateAPI* _pd, PDKeyboardFlags f)
     if (!kb) return NULL;
 
     memset(kb, 0, sizeof(PDKeyboard));
+    kb->flags = f;
 
     if (f & PDKBF_SYMBOLS)
     {
@@ -714,7 +778,7 @@ int pdkb_get_visible_y(const PDKeyboard* kb)
 
 unsigned pdkb_get_hovered(const PDKeyboard* kb)
 {
-    PDKeyboardPage* page = &kb->pages[kb->current_page];
+    const PDKeyboardPage* page = &kb->pages[kb->current_page];
     if (page->type == PDKBP_None) return 0;
     uint32_t key = _pdkb_count_row_get_key(page, kb->sel_row, kb->sel_idx);
     if (key < 0x20) return 0;
