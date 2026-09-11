@@ -23,10 +23,10 @@ endif
 VPATH +=
 
 # List C/C++ source files here
-SRC += main.c
+SRC += main.c ../pdkeyboard.c
 
 # List all user directories here
-UINCDIR +=
+UINCDIR += ..
 
 # List all user C/C++ define here, like -D_DEBUG=1
 UDEFS +=
