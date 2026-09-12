@@ -51,8 +51,9 @@ enum PDKeyboardFlags {
     /* The following are ignored if the encoding scheme is set to ASCII. */
     PDKBF_JA_HIRAGANA = 0x10000,
     PDKBF_JA_KATAKANA = 0x20000,
+    PDKBF_JA_SPECIAL_KANA = 0x40000, /* e.g. we, wi, koto, ...*/
     PDKBF_JA_KANA = PDKBF_JA_HIRAGANA | PDKBF_JA_KATAKANA,
-    PDKBF_JA_ALL = PDKBF_JA_KANA,
+    PDKBF_JA_ALL = PDKBF_JA_KANA | PDKBF_JA_SPECIAL_KANA,
 
     PDKBF_DEFAULT
         = PDKBF_CONFIRM | PDKBF_CANCEL

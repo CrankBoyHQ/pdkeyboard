@@ -924,7 +924,7 @@ static void _pdkb_draw(PDKeyboard* kb)
 
     if (kb->longpress_menu_idx >= 0)
     {
-        int r = 10;
+        int r = 9;
         int kw = _pdkb_get_key_width(page, kb->sel_row);
         int ky = pdkb_get_visible_y(kb) + _pdb_get_key_offy(page) + row_h*(kb->sel_row);
         int kx = _pdkb_get_key_offx(page, kb->sel_row) + shake_offset + kw*(kb->sel_idx + 0.5f);
@@ -1525,7 +1525,7 @@ PDKeyboard* pdkb_new(PlaydateAPI* _pd, PDKeyboardFlags f, const uint32_t* leftke
         kb->pages[PDKBP_JA_Katakana].rows[0][10] = KEY_BACKSPACE;
         kb->pages[PDKBP_JA_Katakana].rows[1][10] = KEY_DAKUTEN;
         kb->pages[PDKBP_JA_Katakana].rows[2][10] = KEY_HANDAKUTEN;
-        kb->pages[PDKBP_JA_Katakana].rows[3][10] = U'ん';
+        kb->pages[PDKBP_JA_Hiragana].rows[3][10] = U'ン';
         kb->pages[PDKBP_JA_Katakana].rows[4][10] = KEY_CONFIRM;
     }
 
@@ -1599,7 +1599,7 @@ PDKeyboard* pdkb_new(PlaydateAPI* _pd, PDKeyboardFlags f, const uint32_t* leftke
         kb->pages[PDKBP_JA_Hiragana].rows[0][10] = KEY_BACKSPACE;
         kb->pages[PDKBP_JA_Hiragana].rows[1][10] = KEY_DAKUTEN;
         kb->pages[PDKBP_JA_Hiragana].rows[2][10] = KEY_HANDAKUTEN;
-        kb->pages[PDKBP_JA_Hiragana].rows[3][10] = U'ン';
+        kb->pages[PDKBP_JA_Katakana].rows[3][10] = U'ん'
         kb->pages[PDKBP_JA_Hiragana].rows[4][10] = KEY_CONFIRM;
     }
 
@@ -1767,21 +1767,36 @@ PDKeyboard* pdkb_new(PlaydateAPI* _pd, PDKeyboardFlags f, const uint32_t* leftke
                     }
                     break;
                 case U'、':
-                    _pdkb_lp_append(page, i, j, U'ゝ');
-                    _pdkb_lp_append(page, i, j, U'ゞ');
+                    if (f & PDKBF_JA_SPECIAL_KANA)
+                    {
+                        _pdkb_lp_append(page, i, j, U'ゝ');
+                        _pdkb_lp_append(page, i, j, U'ゞ');
+                    }
                     break;
                 case U'ー':
-                    _pdkb_lp_append(page, i, j, U'ヽ');
-                    _pdkb_lp_append(page, i, j, U'ヾ');
+                    if (f & PDKBF_JA_SPECIAL_KANA)
+                    {
+                        _pdkb_lp_append(page, i, j, U'ヽ');
+                        _pdkb_lp_append(page, i, j, U'ヾ');
+                    }
                     break;
                 case U'・':
-                    _pdkb_lp_append(page, i, j, U'゠');
+                    if (f & PDKBF_JA_SPECIAL_KANA)
+                    {
+                        _pdkb_lp_append(page, i, j, U'゠');
+                    }
                     break;
                 case U'コ':
-                    _pdkb_lp_append(page, i, j, U'ヿ');
+                    if (f & PDKBF_JA_SPECIAL_KANA)
+                    {
+                        _pdkb_lp_append(page, i, j, U'ヿ');
+                    }
                     break;
                 case U'よ':
-                    _pdkb_lp_append(page, i, j, U'ゟ');
+                    if (f & PDKBF_JA_SPECIAL_KANA)
+                    {
+                        _pdkb_lp_append(page, i, j, U'ゟ');
+                    }
                     break;
                 case '\'':
                     if (f & PDKBF_LATIN_PUNCTUATION)
@@ -1797,36 +1812,48 @@ PDKeyboard* pdkb_new(PlaydateAPI* _pd, PDKeyboardFlags f, const uint32_t* leftke
                     }
                     break;
                 case U'い':
-                    _pdkb_lp_append(page, i, j, U'ゐ');
-                    if (f & PDKBF_JA_KATAKANA)
+                    if (f & PDKBF_JA_SPECIAL_KANA)
                     {
-                        _pdkb_lp_append(page, i, j, U'ヰ');
-                        _pdkb_lp_append(page, i, j, U'ヸ');
+                        _pdkb_lp_append(page, i, j, U'ゐ');
+                        if (f & PDKBF_JA_KATAKANA)
+                        {
+                            _pdkb_lp_append(page, i, j, U'ヰ');
+                            _pdkb_lp_append(page, i, j, U'ヸ');
+                        }
                     }
                     break;
                 case U'え':
-                    _pdkb_lp_append(page, i, j, U'ゑ');
-                    if (f & PDKBF_JA_KATAKANA)
+                    if (f & PDKBF_JA_SPECIAL_KANA)
                     {
-                        _pdkb_lp_append(page, i, j, U'ヰ');
-                        _pdkb_lp_append(page, i, j, U'ヸ');
+                        _pdkb_lp_append(page, i, j, U'ゑ');
+                        if (f & PDKBF_JA_KATAKANA)
+                        {
+                            _pdkb_lp_append(page, i, j, U'ヰ');
+                            _pdkb_lp_append(page, i, j, U'ヸ');
+                        }
                     }
                     break;
                 case U'イ':
-                    _pdkb_lp_append(page, i, j, U'ヰ');
-                    _pdkb_lp_append(page, i, j, U'ヸ');
-                    if (f & PDKBF_JA_HIRAGANA)
+                    if (f & PDKBF_JA_SPECIAL_KANA)
                     {
-                        _pdkb_lp_append(page, i, j, U'ゐ');
-                         	
+                        _pdkb_lp_append(page, i, j, U'ヰ');
+                        _pdkb_lp_append(page, i, j, U'ヸ');
+                        if (f & PDKBF_JA_HIRAGANA)
+                        {
+                            _pdkb_lp_append(page, i, j, U'ゐ');
+                                
+                        }
                     }
                     break;
                 case U'エ':
-                    _pdkb_lp_append(page, i, j, U'ヱ');
-                    _pdkb_lp_append(page, i, j, U'ヹ');
-                    if (f & PDKBF_JA_HIRAGANA)
+                    if (f & PDKBF_JA_SPECIAL_KANA)
                     {
-                        _pdkb_lp_append(page, i, j, U'ゑ');
+                        _pdkb_lp_append(page, i, j, U'ヱ');
+                        _pdkb_lp_append(page, i, j, U'ヹ');
+                        if (f & PDKBF_JA_HIRAGANA)
+                        {
+                            _pdkb_lp_append(page, i, j, U'ゑ');
+                        }
                     }
                     break;
                 default:
