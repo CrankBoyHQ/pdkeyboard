@@ -37,8 +37,7 @@ enum PDKeyboardFlags {
     PDKBF_JA_HIRAGANA = 0x10000,
     PDKBF_JA_KATAKANA = 0x20000,
     PDKBF_JA_KANA = PDKBF_JA_HIRAGANA | PDKBF_JA_KATAKANA,
-    PDKBF_JA_PUNCTUATION = 0x80000,
-    PDKBF_JA_ALL = PDKBF_JA_PUNCTUATION | PDKBF_JA_KANA,
+    PDKBF_JA_ALL = PDKBF_JA_KANA,
 
     PDKBF_DEFAULT
         = PDKBF_CONFIRM | PDKBF_CANCEL
@@ -153,5 +152,14 @@ int pdkb_get_visible_y(const PDKeyboard* kb);
  * cursor is hovering over, or 0 if not applicable.
  * */
 unsigned pdkb_get_hovered(const PDKeyboard* kb);
+
+/* call this from your serial message callback to
+ * enable external device typing.
+ * (See playdate->system->setSerialMessageCallback).
+ * Returns 1 if the message was handled.
+ *
+ * (handles serial messages matching "pdkb:<codepoint in decimal>")
+ */
+int pdkb_on_serial(PDKeyboard* kb, const char* c);
 
 #endif /* _PD_KEYBOARD_H_ */

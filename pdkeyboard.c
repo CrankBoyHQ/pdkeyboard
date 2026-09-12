@@ -59,6 +59,7 @@ static unsigned char dakuten_data[] = {
 };
 static unsigned dakuten_width = 16;
 static unsigned dakuten_height = 16;
+static LCDBitmap* dakuten_img;
 
 static unsigned char handakuten_data[] = {
     0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFE, 0x3F,
@@ -68,6 +69,7 @@ static unsigned char handakuten_data[] = {
 };
 static unsigned handakuten_width = 16;
 static unsigned handakuten_height = 16;
+static LCDBitmap* handakuten_img;
 
 static LCDBitmap* _pdkb_load_image(const uint8_t* data, int width, int height)
 {
@@ -143,12 +145,14 @@ typedef struct PDKeyboard {
     PDStringEncoding encoding;
 
     bool is_jp_region;
+    int shake;
 } PDKeyboard;
 
 
 
 static size_t _codepoint_next(const char* s, size_t offset, PDStringEncoding encoding);
 static size_t _codepoint_prev(const char* s, size_t offset, PDStringEncoding encoding);
+static uint32_t _pdkb_apply_dakuten(uint32_t c, bool is_handakuten);
 static void _pdkb_draw_key(PDKeyboard* kb, uint32_t key, int kx, int ky, int kw, int kh, bool selected, bool down);
 
 size_t _codepoint_next(const char* s, size_t offset, PDStringEncoding encoding)
@@ -286,6 +290,62 @@ size_t _encode(uint32_t codepoint, PDStringEncoding encoding, char* o)
     }
 }
 
+// returns 0 on failure
+uint32_t _decode(const char* s, PDStringEncoding encoding, size_t* size)
+{
+    if (size) *size = 0;
+
+    switch (encoding)
+    {
+    case kASCIIEncoding:
+        if (size) *size = 1;
+        return (uint32_t)(unsigned char)s[0];
+
+    case kUTF8Encoding:
+        {
+            unsigned char c = (unsigned char)s[0];
+            if (c < 0x80)
+            {
+                if (size) *size = 1;
+                return c;
+            }
+            if (c < 0xE0)
+            {
+                if (size) *size = 2;
+                return ((uint32_t)(c & 0x1F) << 6) | ((uint32_t)(unsigned char)s[1] & 0x3F);
+            }
+            if (c < 0xF0)
+            {
+                if (size) *size = 3;
+                return ((uint32_t)(c & 0x0F) << 12)
+                    | ((uint32_t)(unsigned char)s[1] & 0x3F) << 6
+                    | ((uint32_t)(unsigned char)s[2] & 0x3F);
+            }
+            if (size) *size = 4;
+            return ((uint32_t)(c & 0x07) << 18)
+                | ((uint32_t)(unsigned char)s[1] & 0x3F) << 12
+                | ((uint32_t)(unsigned char)s[2] & 0x3F) << 6
+                | ((uint32_t)(unsigned char)s[3] & 0x3F);
+        }
+
+    case k16BitLEEncoding:
+        {
+            uint16_t hi = (uint16_t)(unsigned char)s[0] | ((uint16_t)(unsigned char)s[1] << 8);
+            if (hi >= 0xD800 && hi < 0xDC00)
+            {
+                uint16_t lo = (uint16_t)(unsigned char)s[2] | ((uint16_t)(unsigned char)s[3] << 8);
+                if (size) *size = 4;
+                return 0x10000 + ((uint32_t)(hi - 0xD800) << 10) + (lo - 0xDC00);
+            }
+            if (size) *size = 2;
+            return hi;
+        }
+
+    default:
+        return 0;
+    }
+}
+
 static void _pdkb_ensure_capacity(PDKeyboard* kb, size_t mincapacity)
 {
     if (mincapacity > kb->content_capacity)
@@ -371,6 +431,51 @@ static int _pdkb_get_key_offx(PDKeyboardPage* page, size_t row)
     return (LCD_COLUMNS % _pdkb_get_key_width(page, row)) / 2;
 }
 
+static uint32_t _pdkb_apply_dakuten(uint32_t c, bool is_handakuten)
+{
+    if (is_handakuten)
+    {
+        switch (c)
+        {
+        case 'は': return 'ぱ';
+        case 'ひ': return 'ぴ';
+        case 'ふ': return 'ぷ';
+        case 'へ': return 'ぺ';
+        case 'ほ': return 'ぽ';
+        case 'ハ': return 'パ';
+        case 'ヒ': return 'ピ';
+        case 'フ': return 'プ';
+        case 'ヘ': return 'ペ';
+        case 'ホ': return 'ポ';
+        default: return c;
+        }
+    }
+    else
+    {
+        switch (c)
+        {
+        case 'か': return 'が'; case 'き': return 'ぎ'; case 'く': return 'ぐ';
+        case 'け': return 'げ'; case 'こ': return 'ご';
+        case 'さ': return 'ざ'; case 'し': return 'じ'; case 'す': return 'ず';
+        case 'せ': return 'ぜ'; case 'そ': return 'ぞ';
+        case 'た': return 'だ'; case 'ち': return 'ぢ'; case 'つ': return 'づ';
+        case 'て': return 'で'; case 'と': return 'ど';
+        case 'は': return 'ば'; case 'ひ': return 'び'; case 'ふ': return 'ぶ';
+        case 'へ': return 'べ'; case 'ほ': return 'ぼ';
+        case 'か': return 'が'; case 'キ': return 'ギ'; case 'ク': return 'グ';
+        case 'ケ': return 'ゲ'; case 'コ': return 'ゴ';
+        case 'サ': return 'ザ'; case 'シ': return 'ジ'; case 'ス': return 'ズ';
+        case 'セ': return 'ゼ'; case 'ソ': return 'ゾ';
+        case 'タ': return 'ダ'; case 'チ': return 'ヂ'; case 'ツ': return 'ヅ';
+        case 'テ': return 'デ'; case 'ト': return 'ド';
+        case 'ハ': return 'バ'; case 'ヒ': return 'ビ'; case 'フ': return 'ブ';
+        case 'ヘ': return 'ベ'; case 'ホ': return 'ボ';
+        case 'ウ': return 'ヴ'; case 'ワ': return 'ヷ';
+        default: return c;
+        }
+    }
+}
+
 static void _pdkb_draw_key(PDKeyboard* kb, uint32_t key, int kx, int ky, int kw, int kh, bool selected, bool down)
 {
     int r = 12;
@@ -384,8 +489,7 @@ static void _pdkb_draw_key(PDKeyboard* kb, uint32_t key, int kx, int ky, int kw,
     LCDColor fill = kColorWhite;
     pd->graphics->fillRoundRect(kx, ky, kw, kh, r, fill);
     pd->graphics->drawRoundRect(kx, ky, kw, kh, r, selected ? 2 : 1, kColorBlack);
-    
-    // TODO: special images.
+
     if (key < 0x20)
     {
         LCDBitmap* img = NULL;
@@ -411,6 +515,12 @@ static void _pdkb_draw_key(PDKeyboard* kb, uint32_t key, int kx, int ky, int kw,
             break;
         case KEY_SWITCH:
             CACHEIMG(img, switch, switch)
+            break;
+        case KEY_DAKUTEN:
+            CACHEIMG(img, dakuten, dakuten);
+            break;
+        case KEY_HANDAKUTEN:
+            CACHEIMG(img, handakuten, handakuten);
             break;
         default:
             break;
@@ -451,9 +561,28 @@ static LCDFont* _pdkb_get_font(void)
     return font;
 }
 
+int pdkb_on_serial(PDKeyboard* kb, const char* c)
+{
+    if (!c || c[0] != 'p' || c[1] != 'd' || c[2] != 'k' || c[3] != 'b' || c[4] != ':')
+    {
+        return 0;
+    }
+    
+    unsigned k = atol(c) & 0xFFFFFFFF;
+    
+    // TODO: 
+    
+    return 1;
+}
+
 static void _pdkb_draw(PDKeyboard* kb)
 {
     int y = pdkb_get_visible_y(kb);
+    int shake_offset = 0;
+    if (kb->shake > 0)
+    {
+        shake_offset = (kb->shake % 2 == 0) ? -2 : 2;
+    }
 
     pd->graphics->fillRect(0, y, 400, 240 - y, (uintptr_t)(const void*)lcd50);
     pd->graphics->drawLine(0, y, 400, y, 1, kColorBlack);
@@ -469,7 +598,7 @@ static void _pdkb_draw(PDKeyboard* kb)
 
     for (size_t i = 0; i < page->rows_c; ++i)
     {
-        int kx = _pdkb_get_key_offx(page, i);
+        int kx = _pdkb_get_key_offx(page, i) + shake_offset;
         int kw = _pdkb_get_key_width(page, i);
         size_t k = _pdkb_count_row_keys(page, i);
 
@@ -510,9 +639,85 @@ static void _pdkb_page_advance(PDKeyboard* kb)
     }
 }
 
+static void _pdkb_type(PDKeyboard* kb)
+{
+    if (key >= 0x20)
+    {
+        // printable character: append to content
+        char encoded[5];
+        size_t elen = _encode(key, kb->encoding, encoded);
+        if (elen > 0)
+        {
+            if (kb->content_max_codepoints > 0 &&
+                kb->current_codepoint >= kb->content_max_codepoints
+            )
+            {
+                kb->shake = 10;
+            }
+            else if (kb->content_max_bytes > 0 && kb->current_byte + elen > kb->content_max_bytes)
+            {
+                kb->shake = 10;
+            }
+            else
+            {
+                _pdkb_ensure_capacity(kb, kb->current_byte + elen + 1);
+                memcpy(kb->content + kb->current_byte, encoded, elen);
+                kb->current_byte += elen;
+                kb->current_codepoint++;
+                kb->content[kb->current_byte] = 0;
+            }
+        }
+    }
+    else if (key == KEY_BACKSPACE)
+    {
+        if (kb->current_byte > 0)
+        {
+            size_t prev_byte = _codepoint_prev(kb->content, kb->current_byte, kb->encoding);
+            kb->current_byte = prev_byte;
+            kb->content[kb->current_byte] = '\0';
+            kb->current_codepoint--;
+        }
+    }
+    else if (key == KEY_DAKUTEN || key == KEY_HANDAKUTEN)
+    {
+        if (kb->current_byte > 0 && kb->current_codepoint > 0)
+        {
+            size_t prev_byte = _codepoint_prev(kb->content, kb->current_byte, kb->encoding);
+            size_t cp_len = kb->current_byte - prev_byte;
+
+            uint32_t last_cp = _decode(prev_byte, kb->encoding, NULL);
+            
+            uint32_t modified = _pdkb_apply_dakuten(last_cp, key == KEY_HANDAKUTEN);
+            if (modified && modified != last_cp)
+            {
+                char encoded[5];
+                size_t elen = _encode(modified, kb->encoding, encoded);
+                if (elen > 0)
+                {
+                    _pdkb_ensure_capacity(kb, kb->current_byte + elen + 1);
+                    memcpy(kb->content + prev_byte, encoded, elen);
+                    kb->current_byte += elen;
+                    kb->content[kb->current_byte] = 0;
+                }
+            }
+        }
+    }
+    else if (key == KEY_CONFIRM)
+    {
+        kb->result = 1;
+        pdkb_close(kb);
+    }
+    else if (key == KEY_SWITCH)
+    {
+        _pdkb_page_advance(kb);
+    }
+}
+
 void pdkb_update(PDKeyboard* kb, float dt)
 {
     _pdkb_update_anim(kb, dt);
+
+    if (kb->shake > 0) --kb->shake;
 
     if (kb->open_p <= 0) return;
 
@@ -643,52 +848,7 @@ void pdkb_update(PDKeyboard* kb, float dt)
     {
         uint32_t key = _pdkb_count_row_get_key(page, kb->sel_row, kb->sel_idx);
 
-        if (key >= 0x20)
-        {
-            // printable character: append to content
-            char encoded[5];
-            size_t elen = _encode(key, kb->encoding, encoded);
-            if (elen > 0)
-            {
-                if (kb->content_max_codepoints > 0 &&
-                    kb->current_codepoint >= kb->content_max_codepoints)
-                {
-                    // limit reached
-                    // TODO: shake?
-                }
-                else if (kb->content_max_bytes > 0 && kb->current_byte + elen > kb->content_max_bytes)
-                {
-                    // TODO: shake?
-                }
-                else
-                {
-                    _pdkb_ensure_capacity(kb, kb->current_byte + elen + 1);
-                    memcpy(kb->content + kb->current_byte, encoded, elen);
-                    kb->current_byte += elen;
-                    kb->current_codepoint++;
-                    kb->content[kb->current_byte] = 0;
-                }
-            }
-        }
-        else if (key == KEY_BACKSPACE)
-        {
-            if (kb->current_byte > 0)
-            {
-                size_t prev_byte = _codepoint_prev(kb->content, kb->current_byte, kb->encoding);
-                kb->current_byte = prev_byte;
-                kb->content[kb->current_byte] = '\0';
-                kb->current_codepoint--;
-            }
-        }
-        else if (key == KEY_CONFIRM)
-        {
-            kb->result = 1;
-            pdkb_close(kb);
-        }
-        else if (key == KEY_SWITCH)
-        {
-            _pdkb_page_advance(kb);
-        }
+        _pdkb_type(pd, key);
     }
 }
 
@@ -699,7 +859,6 @@ PDKeyboard* pdkb_new(PlaydateAPI* _pd, PDKeyboardFlags f, const uint32_t* leftke
     PDKeyboard* kb = _pd->system->realloc(NULL, sizeof(PDKeyboard));
 
     if (!kb) return NULL;
-
 
     memset(kb, 0, sizeof(PDKeyboard));
     kb->flags = f;
@@ -714,7 +873,6 @@ PDKeyboard* pdkb_new(PlaydateAPI* _pd, PDKeyboardFlags f, const uint32_t* leftke
     {
         spacekey = KEY_FILLER;
     }
-    
 
     if (f & PDKBF_SYMBOLS)
     {
@@ -726,20 +884,213 @@ PDKeyboard* pdkb_new(PlaydateAPI* _pd, PDKeyboardFlags f, const uint32_t* leftke
     {
         kb->pages[PDKBP_Numeric].type = PDKBP_Numeric;
         kb->current_page = PDKBP_Numeric;
-        
-        // TODO: 3x3 9-1 grid, with 0 at bottom plus space dot and hyphen if allowed.
+
+        kb->pages[PDKBP_Numeric].rows_c = 5;
+
+        // row 0: 9 8 7
+        kb->pages[PDKBP_Numeric].rows[0][0] = '9';
+        kb->pages[PDKBP_Numeric].rows[0][1] = '8';
+        kb->pages[PDKBP_Numeric].rows[0][2] = '7';
+
+        // row 1: 6 5 4
+        kb->pages[PDKBP_Numeric].rows[1][0] = '6';
+        kb->pages[PDKBP_Numeric].rows[1][1] = '5';
+        kb->pages[PDKBP_Numeric].rows[1][2] = '4';
+
+        // row 2: 3 2 1
+        kb->pages[PDKBP_Numeric].rows[2][0] = '3';
+        kb->pages[PDKBP_Numeric].rows[2][1] = '2';
+        kb->pages[PDKBP_Numeric].rows[2][2] = '1';
+
+        // row 3: space 0 . -
+        kb->pages[PDKBP_Numeric].rows[3][0] = spacekey;
+        kb->pages[PDKBP_Numeric].rows[3][1] = '0';
+        kb->pages[PDKBP_Numeric].rows[3][2] = '.';
+        kb->pages[PDKBP_Numeric].rows[3][3] = '-';
+
+        size_t ki = 0;
+        if (pagec >= 2)
+        {
+            kb->pages[PDKBP_Numeric].rows[4][ki++] = KEY_SWITCH;
+        }
+
+        for (const uint32_t* kv = leftkeys; kv && *kv; ++kv)
+        {
+            kb->pages[PDKBP_Numeric].rows[4][ki++] = *kv;
+        }
+
+        kb->pages[PDKBP_Numeric].rows[4][ki++] = spacekey;
+        kb->pages[PDKBP_Numeric].rows[4][ki++] = KEY_EXTEND;
+        kb->pages[PDKBP_Numeric].rows[4][ki++] = KEY_EXTEND;
+        kb->pages[PDKBP_Numeric].rows[4][ki++] = KEY_EXTEND;
+
+        for (const uint32_t* kv = rightkeys; kv && *kv; ++kv)
+        {
+            kb->pages[PDKBP_Numeric].rows[4][ki++] = *kv;
+        }
+
+        if (kb->flags & PDKBF_CONFIRM)
+        {
+            kb->pages[PDKBP_Numeric].rows[4][7] = KEY_CONFIRM;
+        }
     }
 
     if (f & PDKBF_JA_KATAKANA)
     {
         kb->pages[PDKBP_JA_Katakana].type = PDKBP_JA_Katakana;
         kb->current_page = PDKBP_JA_Katakana;
+
+        kb->pages[PDKBP_JA_Katakana].rows_c = 6;
+
+        kb->pages[PDKBP_JA_Katakana].rows[0][0] = ' ';
+        kb->pages[PDKBP_JA_Katakana].rows[0][1] = 'ア';
+        kb->pages[PDKBP_JA_Katakana].rows[0][2] = 'カ';
+        kb->pages[PDKBP_JA_Katakana].rows[0][3] = 'サ';
+        kb->pages[PDKBP_JA_Katakana].rows[0][4] = 'タ';
+        kb->pages[PDKBP_JA_Katakana].rows[0][5] = 'ナ';
+        kb->pages[PDKBP_JA_Katakana].rows[0][6] = 'ハ';
+        kb->pages[PDKBP_JA_Katakana].rows[0][7] = 'マ';
+        kb->pages[PDKBP_JA_Katakana].rows[0][8] = 'ラ';
+        kb->pages[PDKBP_JA_Katakana].rows[0][9] = 'ヤ';
+        kb->pages[PDKBP_JA_Katakana].rows[0][10] = 'ワ';
+        kb->pages[PDKBP_JA_Katakana].rows[0][11] = KEY_FILLER;
+
+        kb->pages[PDKBP_JA_Katakana].rows[1][0] = '、';
+        kb->pages[PDKBP_JA_Katakana].rows[1][1] = 'イ';
+        kb->pages[PDKBP_JA_Katakana].rows[1][2] = 'キ';
+        kb->pages[PDKBP_JA_Katakana].rows[1][3] = 'シ';
+        kb->pages[PDKBP_JA_Katakana].rows[1][4] = 'チ';
+        kb->pages[PDKBP_JA_Katakana].rows[1][5] = 'ニ';
+        kb->pages[PDKBP_JA_Katakana].rows[1][6] = 'ヒ';
+        kb->pages[PDKBP_JA_Katakana].rows[1][7] = 'ミ';
+        kb->pages[PDKBP_JA_Katakana].rows[1][8] = 'リ';
+        kb->pages[PDKBP_JA_Katakana].rows[1][9] = 'ユ';
+        kb->pages[PDKBP_JA_Katakana].rows[1][10] = KEY_FILLER;
+        kb->pages[PDKBP_JA_Katakana].rows[1][11] = KEY_FILLER;
+
+        kb->pages[PDKBP_JA_Katakana].rows[2][0] = '。';
+        kb->pages[PDKBP_JA_Katakana].rows[2][1] = 'ウ';
+        kb->pages[PDKBP_JA_Katakana].rows[2][2] = 'ク';
+        kb->pages[PDKBP_JA_Katakana].rows[2][3] = 'ス';
+        kb->pages[PDKBP_JA_Katakana].rows[2][4] = 'ツ';
+        kb->pages[PDKBP_JA_Katakana].rows[2][5] = 'ヌ';
+        kb->pages[PDKBP_JA_Katakana].rows[2][6] = 'フ';
+        kb->pages[PDKBP_JA_Katakana].rows[2][7] = 'ム';
+        kb->pages[PDKBP_JA_Katakana].rows[2][8] = 'ル';
+        kb->pages[PDKBP_JA_Katakana].rows[2][9] = 'ヨ';
+        kb->pages[PDKBP_JA_Katakana].rows[2][10] = KEY_FILLER;
+        kb->pages[PDKBP_JA_Katakana].rows[2][11] = KEY_FILLER;
+
+        kb->pages[PDKBP_JA_Katakana].rows[3][0] = KEY_FILLER;
+        kb->pages[PDKBP_JA_Katakana].rows[3][1] = 'エ';
+        kb->pages[PDKBP_JA_Katakana].rows[3][2] = 'ケ';
+        kb->pages[PDKBP_JA_Katakana].rows[3][3] = 'セ';
+        kb->pages[PDKBP_JA_Katakana].rows[3][4] = 'テ';
+        kb->pages[PDKBP_JA_Katakana].rows[3][5] = 'ネ';
+        kb->pages[PDKBP_JA_Katakana].rows[3][6] = 'ヘ';
+        kb->pages[PDKBP_JA_Katakana].rows[3][7] = 'メ';
+        kb->pages[PDKBP_JA_Katakana].rows[3][8] = 'レ';
+        kb->pages[PDKBP_JA_Katakana].rows[3][9] = KEY_FILLER;
+        kb->pages[PDKBP_JA_Katakana].rows[3][10] = KEY_FILLER;
+        kb->pages[PDKBP_JA_Katakana].rows[3][11] = KEY_FILLER;
+
+        kb->pages[PDKBP_JA_Katakana].rows[4][0] = KEY_FILLER;
+        kb->pages[PDKBP_JA_Katakana].rows[4][1] = 'オ';
+        kb->pages[PDKBP_JA_Katakana].rows[4][2] = 'コ';
+        kb->pages[PDKBP_JA_Katakana].rows[4][3] = 'ソ';
+        kb->pages[PDKBP_JA_Katakana].rows[4][4] = 'ト';
+        kb->pages[PDKBP_JA_Katakana].rows[4][5] = 'ノ';
+        kb->pages[PDKBP_JA_Katakana].rows[4][6] = 'ホ';
+        kb->pages[PDKBP_JA_Katakana].rows[4][7] = 'モ';
+        kb->pages[PDKBP_JA_Katakana].rows[4][8] = 'ロ';
+        kb->pages[PDKBP_JA_Katakana].rows[4][9] = KEY_FILLER;
+        kb->pages[PDKBP_JA_Katakana].rows[4][10] = 'ヲ';
+        kb->pages[PDKBP_JA_Katakana].rows[4][11] = 'ン';
+
+        kb->pages[PDKBP_JA_Katakana].rows[5][0] = KEY_DAKUTEN;
+        kb->pages[PDKBP_JA_Katakana].rows[5][1] = KEY_HANDAKUTEN;
+        kb->pages[PDKBP_JA_Katakana].rows[5][2] = KEY_BACKSPACE;
+        if (pagec >= 2)
+            kb->pages[PDKBP_JA_Katakana].rows[5][3] = KEY_SWITCH;
     }
 
     if (f & PDKBF_JA_HIRAGANA)
     {
         kb->pages[PDKBP_JA_Hiragana].type = PDKBP_JA_Hiragana;
         kb->current_page = PDKBP_JA_Hiragana;
+
+        kb->pages[PDKBP_JA_Hiragana].rows_c = 6;
+
+        kb->pages[PDKBP_JA_Hiragana].rows[0][0] = ' ';
+        kb->pages[PDKBP_JA_Hiragana].rows[0][1] = 'あ';
+        kb->pages[PDKBP_JA_Hiragana].rows[0][2] = 'か';
+        kb->pages[PDKBP_JA_Hiragana].rows[0][3] = 'さ';
+        kb->pages[PDKBP_JA_Hiragana].rows[0][4] = 'た';
+        kb->pages[PDKBP_JA_Hiragana].rows[0][5] = 'な';
+        kb->pages[PDKBP_JA_Hiragana].rows[0][6] = 'は';
+        kb->pages[PDKBP_JA_Hiragana].rows[0][7] = 'ま';
+        kb->pages[PDKBP_JA_Hiragana].rows[0][8] = 'ら';
+        kb->pages[PDKBP_JA_Hiragana].rows[0][9] = 'や';
+        kb->pages[PDKBP_JA_Hiragana].rows[0][10] = 'わ';
+        kb->pages[PDKBP_JA_Hiragana].rows[0][11] = KEY_FILLER;
+
+        kb->pages[PDKBP_JA_Hiragana].rows[1][0] = '、';
+        kb->pages[PDKBP_JA_Hiragana].rows[1][1] = 'い';
+        kb->pages[PDKBP_JA_Hiragana].rows[1][2] = 'き';
+        kb->pages[PDKBP_JA_Hiragana].rows[1][3] = 'し';
+        kb->pages[PDKBP_JA_Hiragana].rows[1][4] = 'ち';
+        kb->pages[PDKBP_JA_Hiragana].rows[1][5] = 'に';
+        kb->pages[PDKBP_JA_Hiragana].rows[1][6] = 'ひ';
+        kb->pages[PDKBP_JA_Hiragana].rows[1][7] = 'み';
+        kb->pages[PDKBP_JA_Hiragana].rows[1][8] = 'り';
+        kb->pages[PDKBP_JA_Hiragana].rows[1][9] = 'ゆ';
+        kb->pages[PDKBP_JA_Hiragana].rows[1][10] = KEY_FILLER;
+        kb->pages[PDKBP_JA_Hiragana].rows[1][11] = KEY_FILLER;
+
+        kb->pages[PDKBP_JA_Hiragana].rows[2][0] = '。';
+        kb->pages[PDKBP_JA_Hiragana].rows[2][1] = 'う';
+        kb->pages[PDKBP_JA_Hiragana].rows[2][2] = 'く';
+        kb->pages[PDKBP_JA_Hiragana].rows[2][3] = 'す';
+        kb->pages[PDKBP_JA_Hiragana].rows[2][4] = 'つ';
+        kb->pages[PDKBP_JA_Hiragana].rows[2][5] = 'ぬ';
+        kb->pages[PDKBP_JA_Hiragana].rows[2][6] = 'ふ';
+        kb->pages[PDKBP_JA_Hiragana].rows[2][7] = 'む';
+        kb->pages[PDKBP_JA_Hiragana].rows[2][8] = 'る';
+        kb->pages[PDKBP_JA_Hiragana].rows[2][9] = 'よ';
+        kb->pages[PDKBP_JA_Hiragana].rows[2][10] = KEY_FILLER;
+        kb->pages[PDKBP_JA_Hiragana].rows[2][11] = KEY_FILLER;
+
+        kb->pages[PDKBP_JA_Hiragana].rows[3][0] = KEY_FILLER;
+        kb->pages[PDKBP_JA_Hiragana].rows[3][1] = 'え';
+        kb->pages[PDKBP_JA_Hiragana].rows[3][2] = 'け';
+        kb->pages[PDKBP_JA_Hiragana].rows[3][3] = 'せ';
+        kb->pages[PDKBP_JA_Hiragana].rows[3][4] = 'て';
+        kb->pages[PDKBP_JA_Hiragana].rows[3][5] = 'ね';
+        kb->pages[PDKBP_JA_Hiragana].rows[3][6] = 'へ';
+        kb->pages[PDKBP_JA_Hiragana].rows[3][7] = 'め';
+        kb->pages[PDKBP_JA_Hiragana].rows[3][8] = 'れ';
+        kb->pages[PDKBP_JA_Hiragana].rows[3][9] = KEY_FILLER;
+        kb->pages[PDKBP_JA_Hiragana].rows[3][10] = KEY_FILLER;
+        kb->pages[PDKBP_JA_Hiragana].rows[3][11] = KEY_FILLER;
+
+        kb->pages[PDKBP_JA_Hiragana].rows[4][0] = KEY_FILLER;
+        kb->pages[PDKBP_JA_Hiragana].rows[4][1] = 'お';
+        kb->pages[PDKBP_JA_Hiragana].rows[4][2] = 'こ';
+        kb->pages[PDKBP_JA_Hiragana].rows[4][3] = 'そ';
+        kb->pages[PDKBP_JA_Hiragana].rows[4][4] = 'と';
+        kb->pages[PDKBP_JA_Hiragana].rows[4][5] = 'の';
+        kb->pages[PDKBP_JA_Hiragana].rows[4][6] = 'ほ';
+        kb->pages[PDKBP_JA_Hiragana].rows[4][7] = 'も';
+        kb->pages[PDKBP_JA_Hiragana].rows[4][8] = 'ろ';
+        kb->pages[PDKBP_JA_Hiragana].rows[4][9] = KEY_FILLER;
+        kb->pages[PDKBP_JA_Hiragana].rows[4][10] = 'を';
+        kb->pages[PDKBP_JA_Hiragana].rows[4][11] = 'ん';
+
+        kb->pages[PDKBP_JA_Hiragana].rows[5][0] = KEY_DAKUTEN;
+        kb->pages[PDKBP_JA_Hiragana].rows[5][1] = KEY_HANDAKUTEN;
+        kb->pages[PDKBP_JA_Hiragana].rows[5][2] = KEY_BACKSPACE;
+        if (pagec >= 2)
+            kb->pages[PDKBP_JA_Hiragana].rows[5][3] = KEY_SWITCH;
     }
 
     if ((f & PDKBF_LATIN_UPPERCASE) || (f & PDKBF_LATIN_LOWERCASE))
