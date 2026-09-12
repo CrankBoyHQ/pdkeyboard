@@ -36,7 +36,7 @@ enum PDKeyboardFlags {
     /* Start in uppercase */
     PDKBF_START_UPPERCASE = 0x4001,
 
-    /* Audio feedback */
+    /* Audio feedback (NOT YET IMPLEMENTED) */
     PDKBF_SOUND = 0x8000,
 
     /* Allowed Characters */
@@ -64,15 +64,10 @@ enum PDKeyboardFlags {
 };
 typedef enum PDKeyboardFlags PDKeyboardFlags;
 
-/* You only need to create a keyboard once.
+/* After creating a keyboard, you can use pdkb_open() and pdkb_close() to show/hide it.
  * 
- * Afterward, you can use pdkb_open() and pdkb_close() to show/hide it.
- * 
- * The same keyboard can be used on different text entry fields,
- * unless the configuration changes (different flags, etc.).
- * 
- * While the keyboard exists, invoke pdkb_update(kb) once per frame,
- * even if the keyboard has been closed.
+ * While the keyboard exists, invoke pdkb_update(kb) once per frame
+ * (even if the keyboard has been closed.)
  *
  * special_*keys: optional NULL-terminated list of extra keys to add to the right/left of the space bar.
  * (Only for latin keyboard.)
@@ -107,6 +102,16 @@ int pdkb_get_result(const PDKeyboard* kb);
  * returns 0 on failure.
  */
 int pdkb_set_encoding(PDKeyboard* kb, const char* encoding);
+
+/* Allows adding e.g. diacritics to the longpress menu for a key.
+ * For latin alphabet, basekey should be lowercase.
+ * */
+void pdkb_add_longpress_entry(PDKeyboard* kb, uint32_t basekey, uint32_t longpress_key);
+
+/* Keyboard should use the given font (if it has a mapping for the character)
+ * font is not owned by kb, won't be freed.
+ */
+void pdkb_set_font(PDKeyboard* kb, const LCDFont* font);
 
 /* Replaces the keyboard's current string buffer.
  * pdkb_set_content(NULL) should be used to clear the keyboard.

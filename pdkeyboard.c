@@ -13,6 +13,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <ctype.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <stdlib.h>
 #include <string.h>
 #include "pd_api.h"
 #include "pdkeyboard.h"
@@ -160,11 +161,16 @@ enum PDKBPageType {
 #define KEY_BACKSPACE 8
 #define KEY_SHRINK 9
 
+#define LONGPRESS_TIME (0.35f)
+#define DAS_ONSET_TIME (0.2f)
+#define DAS_INTERVAL (0.05f)
+
 typedef struct PDKeyboardPage {
     enum PDKBPageType type;
 
     size_t rows_c;
     uint32_t rows[MAXROWS][MAXROWLEN];
+    uint32_t* rows_longpress[MAXROWS][MAXROWLEN];
 
 } PDKeyboardPage;
 
@@ -186,22 +192,91 @@ typedef struct PDKeyboard {
     size_t sel_row;
     size_t sel_idx;
     bool sel_down;
+    float longpress_t;
+    float das_t;
+    // negative: unselected
+    int longpress_menu_idx;
     int altstate;
 
     PDStringEncoding encoding;
 
     bool is_jp_region;
     int shake;
+    
+    const LCDFont* user_font;
 } PDKeyboard;
-
-
 
 static size_t _codepoint_next(const char* s, size_t offset, PDStringEncoding encoding);
 static size_t _codepoint_prev(const char* s, size_t offset, PDStringEncoding encoding);
 static uint32_t _pdkb_apply_dakuten(uint32_t c, bool is_handakuten);
 static void _pdkb_draw_key(PDKeyboard* kb, uint32_t key, int kx, int ky, int kw, int kh, bool selected, bool down);
+static void _pdkb_type(PDKeyboard* kb, uint32_t key);
+static LCDFont* _pdkb_get_font(void);
+static LCDFont* _pdkb_font_for(PDKeyboard* kb, uint32_t c);
 
-size_t _codepoint_next(const char* s, size_t offset, PDStringEncoding encoding)
+static size_t _len(uint32_t* l)
+{
+    if (!l) return 0;
+    
+    size_t n = 0;
+    while (true)
+    {
+        if (!l[n]) return n;
+        ++n;
+    }
+}
+
+uint32_t* _append(uint32_t* l, uint32_t v)
+{
+    size_t len = _len(l);
+    
+    uint32_t* l2 = pd->system->realloc(NULL, (len+2)*sizeof(uint32_t));
+    if (!l2) return l;
+    
+    for (size_t i = 0; i < len; ++i)
+    {
+        l2[i] = l[i];
+    }
+    l2[len] = v;
+    l2[len+1] = 0;
+    
+    if (l) pd->system->realloc(l, 0);
+    
+    return l2;
+}
+
+static void _pdkb_lp_append(PDKeyboardPage* page, size_t row, size_t idx, uint32_t key)
+{
+    page->rows_longpress[row][idx] = _append(page->rows_longpress[row][idx], key);
+}
+
+static void _pdkb_lp_free(PDKeyboardPage* page)
+{
+    for (size_t i = 0; i < MAXROWS; ++i)
+    {
+        for (size_t j = 0; j < MAXROWLEN; ++j)
+        {
+            if (page->rows_longpress[i][j])
+            {
+                pd->system->realloc(page->rows_longpress[i][j], 0);
+                page->rows_longpress[i][j] = NULL;
+            }
+        }
+    }
+}
+
+static uint32_t _pdkb_apply_sutegana(uint32_t c);
+static uint32_t _pdkb_apply_altstate(uint32_t key)
+{
+    uint32_t alt = _pdkb_apply_sutegana(key);
+    if (alt != key) return alt;
+    
+    if (key < 0x80) return (uint32_t)toupper((int)key);
+
+    return key;
+}
+
+static size_t _codepoint_next(const char* s, size_t offset, PDStringEncoding encoding)
 {
     size_t len = strlen(s);
 
@@ -239,7 +314,7 @@ size_t _codepoint_next(const char* s, size_t offset, PDStringEncoding encoding)
     }
 }
 
-size_t _codepoint_prev(const char* s, size_t offset, PDStringEncoding encoding)
+static size_t _codepoint_prev(const char* s, size_t offset, PDStringEncoding encoding)
 {
     if (offset == 0) return 0;
 
@@ -272,7 +347,7 @@ size_t _codepoint_prev(const char* s, size_t offset, PDStringEncoding encoding)
 }
 
 // returns bytes of encoding output
-size_t _encode(uint32_t codepoint, PDStringEncoding encoding, char* o)
+static size_t _encode(uint32_t codepoint, PDStringEncoding encoding, char* o)
 {
     switch (encoding)
     {
@@ -337,7 +412,7 @@ size_t _encode(uint32_t codepoint, PDStringEncoding encoding, char* o)
 }
 
 // returns 0 on failure
-uint32_t _decode(const char* s, PDStringEncoding encoding, size_t* size)
+static uint32_t _decode(const char* s, PDStringEncoding encoding, size_t* size)
 {
     if (size) *size = 0;
 
@@ -541,6 +616,60 @@ static uint32_t _pdkb_apply_dakuten(uint32_t c, bool is_handakuten)
     }
 }
 
+static LCDBitmap* _pdkb_key_image(PDKeyboard* kb, uint32_t key)
+{
+    LCDBitmap* img = NULL;
+
+    #define CACHEIMG(OUT, VAR, NAME) \
+        if (!VAR##_img) VAR##_img = _pdkb_load_image(NAME##_data, NAME##_width, NAME##_height); \
+        OUT = VAR##_img;
+
+    switch(key)
+    {
+    case KEY_BACKSPACE:
+        CACHEIMG(img, backspace, backspace);
+        break;
+    case KEY_CONFIRM:
+        if (kb->is_jp_region)
+        {
+            CACHEIMG(img, confirm, confirm_jp);
+        }
+        else
+        {
+            CACHEIMG(img, confirm, confirm);
+        }
+        break;
+    case KEY_SWITCH:
+        CACHEIMG(img, switch, switch)
+        break;
+    case KEY_DAKUTEN:
+        CACHEIMG(img, dakuten, dakuten);
+        break;
+    case KEY_HANDAKUTEN:
+        CACHEIMG(img, handakuten, handakuten);
+        break;
+    case KEY_SHRINK:
+        CACHEIMG(img, shrink, shrink);
+        break;
+    case KEY_UPPER:
+        if (kb->altstate == 2)
+        {
+            CACHEIMG(img, upper_latch, upper_latch);
+        }
+        else
+        {
+            CACHEIMG(img, upper, upper);
+        }
+        break;
+    default:
+        break;
+    }
+
+    #undef CACHEIMG
+
+    return img;
+}
+
 static void _pdkb_draw_key(PDKeyboard* kb, uint32_t key, int kx, int ky, int kw, int kh, bool selected, bool down)
 {
     int r = 12;
@@ -557,53 +686,8 @@ static void _pdkb_draw_key(PDKeyboard* kb, uint32_t key, int kx, int ky, int kw,
 
     if (key < 0x20)
     {
-        LCDBitmap* img = NULL;
-        
-        #define CACHEIMG(OUT, VAR, NAME) \
-            if (!VAR##_img) VAR##_img = _pdkb_load_image(NAME##_data, NAME##_width, NAME##_height); \
-            OUT = VAR##_img;
-        
-        switch(key)
-        {
-        case KEY_BACKSPACE:
-            CACHEIMG(img, backspace, backspace);
-            break;
-        case KEY_CONFIRM:
-            if (kb->is_jp_region)
-            {
-                CACHEIMG(img, confirm, confirm_jp);
-            }
-            else
-            {
-                CACHEIMG(img, confirm, confirm);
-            }
-            break;
-        case KEY_SWITCH:
-            CACHEIMG(img, switch, switch)
-            break;
-        case KEY_DAKUTEN:
-            CACHEIMG(img, dakuten, dakuten);
-            break;
-        case KEY_HANDAKUTEN:
-            CACHEIMG(img, handakuten, handakuten);
-            break;
-        case KEY_SHRINK:
-            CACHEIMG(img, shrink, shrink);
-            break;
-        case KEY_UPPER:
-            if (kb->altstate == 2)
-            {
-                CACHEIMG(img, upper_latch, upper_latch);
-            }
-            else
-            {
-                CACHEIMG(img, upper, upper);
-            }
-            break;
-        default:
-            break;
-        }
-        
+        LCDBitmap* img = _pdkb_key_image(kb, key);
+
         if (img)
         {
             int w, h;
@@ -621,12 +705,14 @@ static void _pdkb_draw_key(PDKeyboard* kb, uint32_t key, int kx, int ky, int kw,
         
         if (kb->altstate)
         {
-            key = _pdkb_apply_sutegana(key);
-            key = toupper(key);
+            key = _pdkb_apply_altstate(key);
         }
-        
+
         _encode(key, kUTF8Encoding, buff);
-        int textwidth = pd->graphics->getTextWidth(font, buff, 1, kUTF8Encoding, 0);
+
+        LCDFont* f = _pdkb_font_for(kb, key);
+        pd->graphics->setFont(f);
+        int textwidth = pd->graphics->getTextWidth(f, buff, 1, kUTF8Encoding, 0);
         pd->graphics->drawText(buff, 1, kUTF8Encoding, kx + kw/2 - textwidth/2, ky + kh/2-7);
     }
     
@@ -648,6 +734,102 @@ static LCDFont* _pdkb_get_font(void)
     return font;
 }
 
+static LCDFont* _pdkb_font_for(PDKeyboard* kb, uint32_t c)
+{
+    if (kb->user_font)
+    {
+        LCDFont* uf = (LCDFont*)kb->user_font;
+        LCDFontPage* fp = pd->graphics->getFontPage(uf, c);
+        if (fp && pd->graphics->getPageGlyph(fp, c, NULL, NULL))
+        {
+            return uf;
+        }
+    }
+
+    return _pdkb_get_font();
+}
+
+static uint32_t _pdkb_get_real_longpress_key(PDKeyboard* kb, uint32_t lp, uint32_t basekey)
+{
+    if (lp == KEY_UPPER)
+    {
+        if (!kb->altstate)
+            lp = toupper(basekey);
+        else
+            lp = basekey;
+    }
+    
+    if (lp == KEY_SHRINK)
+    {
+        if (!kb->altstate)
+            lp = _pdkb_apply_sutegana(basekey);
+        else
+            lp = basekey;
+    }
+    
+    if (lp == KEY_DAKUTEN)
+    {
+        lp = _pdkb_apply_dakuten(basekey, false);
+    }
+    
+    if (lp == KEY_HANDAKUTEN)
+    {
+        lp = _pdkb_apply_dakuten(basekey, true);
+    }
+    
+    if (lp < 0x20) return basekey;
+    
+    return lp;
+}
+
+// can k be produced by some key on some page (directly or via a modifier)?
+static bool _pdkb_key_reachable(PDKeyboard* kb, uint32_t k)
+{
+    // the case a page does not store is only reachable through KEY_UPPER,
+    // which is only placed when both latin cases are enabled
+    const bool can_change_case =
+        (kb->flags & (PDKBF_LATIN_UPPERCASE | PDKBF_LATIN_LOWERCASE))
+            == (PDKBF_LATIN_UPPERCASE | PDKBF_LATIN_LOWERCASE);
+
+    for (size_t p = 0; p < PDKBP_COUNT; ++p)
+    {
+        const PDKeyboardPage* page = &kb->pages[p];
+        if (page->type == PDKBP_None) continue;
+
+        for (size_t i = 0; i < MAXROWS; ++i)
+        {
+            for (size_t j = 0; j < MAXROWLEN; ++j)
+            {
+                uint32_t key = page->rows[i][j];
+                if (!key) continue;
+
+                if (key == k) return true;
+
+                // case variations
+                if (can_change_case && key < 0x80)
+                {
+                    if ((uint32_t)toupper((int)key) == k) return true;
+                    if ((uint32_t)tolower((int)key) == k) return true;
+                }
+
+                // kana modifiers
+                if (_pdkb_apply_sutegana(key) == k) return true;
+                if (_pdkb_apply_dakuten(key, false) == k) return true;
+                if (_pdkb_apply_dakuten(key, true) == k) return true;
+
+                // longpress entries
+                const uint32_t* lp = page->rows_longpress[i][j];
+                for (size_t n = 0; lp && lp[n]; ++n)
+                {
+                    if (lp[n] == k) return true;
+                }
+            }
+        }
+    }
+
+    return false;
+}
+
 int pdkb_on_serial(PDKeyboard* kb, const char* c)
 {
     if (!c || c[0] != 'p' || c[1] != 'd' || c[2] != 'k' || c[3] != 'b' || c[4] != ':')
@@ -655,10 +837,28 @@ int pdkb_on_serial(PDKeyboard* kb, const char* c)
         return 0;
     }
     
-    unsigned k = atol(c) & 0xFFFFFFFF;
-    
-    // TODO: 
-    
+    // "pdkb:<codepoint in decimal>"
+    const char* num = c + 5;
+    char* end = NULL;
+    unsigned long k = strtoul(num, &end, 10);
+
+    if (end == num || k == 0 || k > 0x10FFFF)
+    {
+        return 0;
+    }
+
+    if (kb)
+    {
+        if (_pdkb_key_reachable(kb, (uint32_t)k))
+        {
+            _pdkb_type(kb, (uint32_t)k);
+        }
+        else
+        {
+            kb->shake = 10;
+        }
+    }
+
     return 1;
 }
 
@@ -698,7 +898,7 @@ static void _pdkb_draw(PDKeyboard* kb)
             bool sel = i == kb->sel_row && j == kb->sel_idx;
             if (key != KEY_FILLER)
             {
-                _pdkb_draw_key(kb, key, kx, ky, (int)(kw * jw), row_h, sel, sel && kb->sel_down);
+                _pdkb_draw_key(kb, key, kx, ky, (int)(kw * jw), row_h, sel, sel && kb->sel_down && kb->longpress_menu_idx < 0);
             }
             j += jw;
             kx += kw * jw;
@@ -706,13 +906,66 @@ static void _pdkb_draw(PDKeyboard* kb)
 
         ky += row_h;
 
-        if (ky >= LCD_ROWS) return;
+        if (ky >= LCD_ROWS) break;
+    }
+
+    if (kb->longpress_menu_idx >= 0)
+    {
+        int r = 10;
+        int kw = _pdkb_get_key_width(page, kb->sel_row);
+        int ky = pdkb_get_visible_y(kb) + _pdb_get_key_offy(page) + row_h*(kb->sel_row);
+        int kx = _pdkb_get_key_offx(page, kb->sel_row) + shake_offset + kw*(kb->sel_idx + 0.5f);
+
+        uint32_t* lp = kb->pages[kb->current_page].rows_longpress[kb->sel_row][kb->sel_idx];
+
+        size_t count = _len(lp);
+        int lw = 18;
+        int lh = 24;
+        int lm = 0;
+        int tt = 6;
+
+        int lx = kx - count*lw/2;
+        int ly = ky - lh - lm;
+        
+        if (lx < 0) lx = 0;
+        if (lx + lw*count >= LCD_COLUMNS) lx = LCD_COLUMNS - lw*count;
+
+        int t = 3;
+        pd->graphics->fillTriangle(kx - tt - t, ly + lh, kx + tt + t, ly + lh, kx, ly + lh + tt + t, kColorBlack);
+        pd->graphics->fillRoundRect(lx, ly, lw * count, lh, r, kColorWhite);
+        pd->graphics->drawRoundRect(lx, ly, lw * count, lh, r, 2, kColorBlack);
+        pd->graphics->fillTriangle(kx - tt - 4, ly + lh - 4, kx + tt + 4, ly + lh - 4, kx, ly + lh + tt, kColorWhite);
+        
+        for (size_t i = 0; i < count; ++i)
+        {
+            uint32_t key = _pdkb_get_real_longpress_key(kb, lp[i], kb->pages[kb->current_page].rows[kb->sel_row][kb->sel_idx]);
+            int ix = lx + (int)i * lw;
+            bool sel = ((int)i == kb->longpress_menu_idx);
+
+            if (sel)
+            {
+                pd->graphics->fillRoundRect(ix, ly, lw, lh, r, kColorBlack);
+            }
+
+            char buff[5];
+            memset(buff, 0, sizeof(buff));
+            _encode(key, kUTF8Encoding, buff);
+
+            LCDFont* f = _pdkb_font_for(kb, key);
+            pd->graphics->setFont(f);
+            int textwidth = pd->graphics->getTextWidth(f, buff, 1, kUTF8Encoding, 0);
+            pd->graphics->setDrawMode(sel ? kDrawModeInverted : kDrawModeCopy);
+            pd->graphics->drawText(buff, 1, kUTF8Encoding, ix + lw/2 - textwidth/2, ly + lh/2 - 9);
+            pd->graphics->setDrawMode(kDrawModeCopy);
+        }
     }
 }
 
 static void _pdkb_page_advance(PDKeyboard* kb)
 {
     kb->altstate = 0;
+    kb->longpress_t = -1;
+    kb->longpress_menu_idx = -1;
     
     size_t start = kb->current_page;
     for (int i = 0; i < PDKBP_COUNT; ++i)
@@ -736,8 +989,7 @@ static void _pdkb_type(PDKeyboard* kb, uint32_t key)
         uint32_t orgkey = key;
         if (kb->altstate)
         {
-            key = _pdkb_apply_sutegana(key);
-            key = toupper(key);
+            key = _pdkb_apply_altstate(key);
         }
         size_t elen = _encode(key, kb->encoding, encoded);
         if (elen > 0)
@@ -869,115 +1121,161 @@ void pdkb_update(PDKeyboard* kb, float dt)
     
     kb->sel_down = (down & kButtonA);
     
+    if (!kb->sel_down)
+    {
+        kb->longpress_t = 0;
+    }
+    else if (kb->longpress_menu_idx < 0 && kb->longpress_t >= 0)
+    {
+        kb->longpress_t += dt;
+        if (kb->longpress_t >= LONGPRESS_TIME)
+        {
+            if (kb->pages[kb->current_page].rows_longpress[kb->sel_row][kb->sel_idx])
+            {
+                kb->longpress_menu_idx = 0;
+            }
+        }
+    }
+    
     int dx = !!(pushed & kButtonRight) - !!(pushed & kButtonLeft);
     int dy = !!(pushed & kButtonDown) - !!(pushed & kButtonUp);
-
-    if (dx != 0 || dy != 0)
-    {
-        // move vertically first
+    
+    if (kb->longpress_menu_idx >= 0)
+    {        
+        if (released & kButtonA)
+        {
+            uint32_t key = kb->pages[kb->current_page].rows_longpress[kb->sel_row][kb->sel_idx][kb->longpress_menu_idx];
+            key = _pdkb_get_real_longpress_key(kb, key, kb->pages[kb->current_page].rows[kb->sel_row][kb->sel_idx]);
+            _pdkb_type(kb, key);
+            kb->longpress_menu_idx = -1;
+            kb->longpress_t = -1;
+            return;
+        }
+        
         if (dy != 0)
         {
-            int new_row = (int)kb->sel_row + dy;
-            if (new_row < 0) new_row = (int)page->rows_c - 1;
-            if (new_row >= (int)page->rows_c) new_row = 0;
-
-            size_t count = _pdkb_count_row_keys(page, (size_t)new_row);
-            if (count > 0)
-            {
-                // compute center x of the currently selected key
-                int cur_kw = _pdkb_get_key_width(page, kb->sel_row);
-                int cur_offx = _pdkb_get_key_offx(page, kb->sel_row);
-                size_t cur_jw = 1;
-                while (_pdkb_count_row_get_key(page, kb->sel_row, kb->sel_idx + cur_jw) == KEY_EXTEND) ++cur_jw;
-                int cur_center = cur_offx + (int)kb->sel_idx * cur_kw + cur_kw * (int)cur_jw / 2;
-
-                // find key in new row whose center x is closest
-                int new_kw = _pdkb_get_key_width(page, (size_t)new_row);
-                int new_offx = _pdkb_get_key_offx(page, (size_t)new_row);
-                size_t best_idx = 0;
-                int best_dist = 0x7fffffff;
-                for (size_t j = 0; j < count;)
-                {
-                    uint32_t k = _pdkb_count_row_get_key(page, (size_t)new_row, j);
-                    if (k != 0 && k != KEY_FILLER && k != KEY_EXTEND)
-                    {
-                        size_t jw = 1;
-                        while (_pdkb_count_row_get_key(page, (size_t)new_row, j + jw) == KEY_EXTEND) ++jw;
-                        int new_center = new_offx + (int)j * new_kw + new_kw * (int)jw / 2;
-                        int dist = cur_center - new_center;
-                        if (dist < 0) dist = -dist;
-                        if (dist < best_dist)
-                        {
-                            best_dist = dist;
-                            best_idx = j;
-                        }
-                    }
-                    // skip to next key
-                    size_t skip_jw = 1;
-                    while (_pdkb_count_row_get_key(page, (size_t)new_row, j + skip_jw) == KEY_EXTEND) ++skip_jw;
-                    j += skip_jw;
-                }
-
-                kb->sel_row = (size_t)new_row;
-                kb->sel_idx = best_idx;
-            }
+            kb->longpress_menu_idx = -1;
+            kb->longpress_t = -1;
+            return;
         }
-
-        // move horizontally
-        if (dx != 0)
+        kb->longpress_menu_idx += dx;
+        size_t count = _len(kb->pages[kb->current_page].rows_longpress[kb->sel_row][kb->sel_idx]);
+        if (kb->longpress_menu_idx >= count)
         {
-            size_t count = _pdkb_count_row_keys(page, kb->sel_row);
-            if (count > 0)
+            kb->longpress_menu_idx = -1;
+            kb->longpress_t = -1;
+            return;
+        }
+    }
+    else
+    {
+        if (dx != 0 || dy != 0)
+        {
+            // move vertically first
+            if (dy != 0)
             {
-                // collect valid indices
-                size_t valid[40];
-                size_t vc = 0;
-                for (size_t j = 0; j < count; ++j)
+                int new_row = (int)kb->sel_row + dy;
+                if (new_row < 0) new_row = (int)page->rows_c - 1;
+                if (new_row >= (int)page->rows_c) new_row = 0;
+
+                size_t count = _pdkb_count_row_keys(page, (size_t)new_row);
+                if (count > 0)
                 {
-                    uint32_t k = _pdkb_count_row_get_key(page, kb->sel_row, j);
-                    if (k != 0 && k != KEY_FILLER && k != KEY_EXTEND)
-                        valid[vc++] = j;
+                    // compute center x of the currently selected key
+                    int cur_kw = _pdkb_get_key_width(page, kb->sel_row);
+                    int cur_offx = _pdkb_get_key_offx(page, kb->sel_row);
+                    size_t cur_jw = 1;
+                    while (_pdkb_count_row_get_key(page, kb->sel_row, kb->sel_idx + cur_jw) == KEY_EXTEND) ++cur_jw;
+                    int cur_center = cur_offx + (int)kb->sel_idx * cur_kw + cur_kw * (int)cur_jw / 2;
+
+                    // find key in new row whose center x is closest
+                    int new_kw = _pdkb_get_key_width(page, (size_t)new_row);
+                    int new_offx = _pdkb_get_key_offx(page, (size_t)new_row);
+                    size_t best_idx = 0;
+                    int best_dist = 0x7fffffff;
+                    for (size_t j = 0; j < count;)
+                    {
+                        uint32_t k = _pdkb_count_row_get_key(page, (size_t)new_row, j);
+                        if (k != 0 && k != KEY_FILLER && k != KEY_EXTEND)
+                        {
+                            size_t jw = 1;
+                            while (_pdkb_count_row_get_key(page, (size_t)new_row, j + jw) == KEY_EXTEND) ++jw;
+                            int new_center = new_offx + (int)j * new_kw + new_kw * (int)jw / 2;
+                            int dist = cur_center - new_center;
+                            if (dist < 0) dist = -dist;
+                            if (dist < best_dist)
+                            {
+                                best_dist = dist;
+                                best_idx = j;
+                            }
+                        }
+                        // skip to next key
+                        size_t skip_jw = 1;
+                        while (_pdkb_count_row_get_key(page, (size_t)new_row, j + skip_jw) == KEY_EXTEND) ++skip_jw;
+                        j += skip_jw;
+                    }
+
+                    kb->sel_row = (size_t)new_row;
+                    kb->sel_idx = best_idx;
                 }
+            }
 
-                if (vc > 0)
+            // move horizontally
+            if (dx != 0)
+            {
+                size_t count = _pdkb_count_row_keys(page, kb->sel_row);
+                if (count > 0)
                 {
-                    // find current position in valid list
-                    size_t pos = 0;
-                    for (size_t v = 0; v < vc; ++v)
+                    // collect valid indices
+                    size_t valid[40];
+                    size_t vc = 0;
+                    for (size_t j = 0; j < count; ++j)
                     {
-                        if (valid[v] == kb->sel_idx) { pos = v; break; }
+                        uint32_t k = _pdkb_count_row_get_key(page, kb->sel_row, j);
+                        if (k != 0 && k != KEY_FILLER && k != KEY_EXTEND)
+                            valid[vc++] = j;
                     }
 
-                    if (dx > 0)
+                    if (vc > 0)
                     {
-                        pos++;
-                        if (pos >= vc) pos = 0;
-                    }
-                    else
-                    {
-                        if (pos == 0) pos = vc - 1;
-                        else pos--;
-                    }
+                        // find current position in valid list
+                        size_t pos = 0;
+                        for (size_t v = 0; v < vc; ++v)
+                        {
+                            if (valid[v] == kb->sel_idx) { pos = v; break; }
+                        }
 
-                    kb->sel_idx = valid[pos];
+                        if (dx > 0)
+                        {
+                            pos++;
+                            if (pos >= vc) pos = 0;
+                        }
+                        else
+                        {
+                            if (pos == 0) pos = vc - 1;
+                            else pos--;
+                        }
+
+                        kb->sel_idx = valid[pos];
+                    }
                 }
             }
         }
-    }
-    
-    if ((released & kButtonB) && (kb->flags & PDKBF_CANCEL))
-    {
-        kb->result = -1;
-        kb->is_open = false;
-        return;
-    }
-    
-    // typing
-    if (released & kButtonA && kb->open_p == 1)
-    {
-        uint32_t key = _pdkb_count_row_get_key(page, kb->sel_row, kb->sel_idx);
+        
+        if ((released & kButtonB) && (kb->flags & PDKBF_CANCEL))
+        {
+            kb->result = -1;
+            kb->is_open = false;
+            return;
+        }
+        
+        // typing
+        if (released & kButtonA && kb->open_p == 1)
+        {
+            uint32_t key = _pdkb_count_row_get_key(page, kb->sel_row, kb->sel_idx);
 
-        _pdkb_type(kb, key);
+            _pdkb_type(kb, key);
+        }
     }
 }
 
@@ -992,6 +1290,7 @@ PDKeyboard* pdkb_new(PlaydateAPI* _pd, PDKeyboardFlags f, const uint32_t* leftke
     memset(kb, 0, sizeof(PDKeyboard));
     kb->flags = f;
     kb->is_jp_region = pd->system->getLanguage() == kPDLanguageJapanese;
+    kb->longpress_menu_idx = -1;
     
     int pagec = !!(f&(PDKBF_LATIN_LOWERCASE | PDKBF_LATIN_UPPERCASE))
         +  ((f & PDKBF_SYMBOLS) == PDKBF_SYMBOLS) + !!(f & PDKBF_NUMERIC)
@@ -1002,6 +1301,11 @@ PDKeyboard* pdkb_new(PlaydateAPI* _pd, PDKeyboardFlags f, const uint32_t* leftke
     {
         spacekey = KEY_FILLER;
     }
+
+    const bool has_upper = !!(f & PDKBF_LATIN_UPPERCASE);
+    const bool has_lower = !!(f & PDKBF_LATIN_LOWERCASE);
+    const bool has_upper_and_lower = (f & (PDKBF_LATIN_UPPERCASE | PDKBF_LATIN_LOWERCASE))
+        == (PDKBF_LATIN_UPPERCASE | PDKBF_LATIN_LOWERCASE);
 
     if ((f & PDKBF_SYMBOLS) == PDKBF_SYMBOLS)
     {
@@ -1336,10 +1640,7 @@ PDKeyboard* pdkb_new(PlaydateAPI* _pd, PDKeyboardFlags f, const uint32_t* leftke
             kb->pages[PDKBP_Latin].rows[3][ki++] = KEY_SWITCH;
         }
         
-        const bool has_upper = (kb->flags & (PDKBF_LATIN_UPPERCASE | PDKBF_LATIN_LOWERCASE))
-            == (PDKBF_LATIN_UPPERCASE | PDKBF_LATIN_LOWERCASE);
-        
-        if (has_upper)
+        if (has_upper_and_lower)
         {
             kb->pages[PDKBP_Latin].rows[3][ki++] = KEY_UPPER;
         }
@@ -1366,9 +1667,83 @@ PDKeyboard* pdkb_new(PlaydateAPI* _pd, PDKeyboardFlags f, const uint32_t* leftke
         if (kb->flags & PDKBF_CONFIRM)
         {
             kb->pages[PDKBP_Latin].rows[3][ki++] = KEY_CONFIRM;
-            if (has_upper)
+            if (has_upper_and_lower)
             {
                 kb->pages[PDKBP_Latin].rows[3][ki++] = KEY_EXTEND;
+            }
+        }
+    }
+    
+    // longpress keys
+    for (size_t p = 0; p < PDKBP_COUNT; ++p)
+    {
+        PDKeyboardPage* page = &kb->pages[p];
+        for (size_t i = 0; i < MAXROWS; ++i)
+        {
+            for (size_t j = 0; j < MAXROWLEN; ++j)
+            {
+                uint32_t key = page->rows[i][j];
+
+                if ((key >= 'a' && key <= 'z') || (key >= 'A' && key <= 'Z'))
+                {
+                    if (has_upper_and_lower)
+                        _pdkb_lp_append(page, i, j, KEY_UPPER);
+                }
+                
+                switch(key)
+                {
+                case ' ':
+                    if (f & PDKBF_LATIN_PUNCTUATION)
+                    {
+                        _pdkb_lp_append(page, i, j, '_');
+                        _pdkb_lp_append(page, i, j, '-');
+                    }
+                    break;
+                case '~':
+                    if (f & PDKBF_SYMBOLS)
+                    {
+                        _pdkb_lp_append(page, i, j, '`');
+                    }
+                    break;
+                case '.':
+                case ',':
+                    if (f & PDKBF_LATIN_PUNCTUATION)
+                    {
+                        _pdkb_lp_append(page, i, j, (key == '.') ? ',' : '.');
+                        _pdkb_lp_append(page, i, j, '?');
+                        _pdkb_lp_append(page, i, j, '!');
+                        _pdkb_lp_append(page, i, j, ':');
+                        _pdkb_lp_append(page, i, j, ';');
+                    }
+                    break;
+                case '\'':
+                    if (f & PDKBF_LATIN_PUNCTUATION)
+                    {
+                        _pdkb_lp_append(page, i, j, '"');
+                        _pdkb_lp_append(page, i, j, '_');
+                        _pdkb_lp_append(page, i, j, '-');
+                        _pdkb_lp_append(page, i, j, '/');
+                        _pdkb_lp_append(page, i, j, '\\');
+                        _pdkb_lp_append(page, i, j, '(');
+                        _pdkb_lp_append(page, i, j, ')');
+                        _pdkb_lp_append(page, i, j, '`');
+                    }
+                    break;
+                default:
+                    break;
+                }
+                
+                uint32_t key_sg = _pdkb_apply_sutegana(key);
+                if (key_sg != key) _pdkb_lp_append(page, i, j, key_sg);
+                
+                key_sg = _pdkb_apply_dakuten(key, false);
+                if (key_sg != key) _pdkb_lp_append(page, i, j, key_sg);
+                
+                key_sg = _pdkb_apply_dakuten(key, true);
+                if (key_sg != key) _pdkb_lp_append(page, i, j, key_sg);
+                
+                // TODO: also add katakana/hiragana variations
+                // (note: recompute dakuten/sutegana for that variation.)
             }
         }
     }
@@ -1388,6 +1763,12 @@ PDKeyboard* pdkb_new(PlaydateAPI* _pd, PDKeyboardFlags f, const uint32_t* leftke
 void pdkb_free(PDKeyboard* kb)
 {
     if (!kb) return;
+
+    for (size_t p = 0; p < PDKBP_COUNT; ++p)
+    {
+        _pdkb_lp_free(&kb->pages[p]);
+    }
+
     pd->system->realloc(kb->content, 0);
     pd->system->realloc(kb, 0);
 }
@@ -1457,6 +1838,12 @@ unsigned pdkb_get_content_length_codepoints(const PDKeyboard* kb)
     return count;
 }
 
+void pdkb_set_font(PDKeyboard* kb, const LCDFont* f)
+{
+    if (!kb) return;
+    kb->user_font = f;
+}
+
 void pdkb_set_max_bytes(PDKeyboard* kb, unsigned max_bytes)
 {
     kb->content_max_bytes = max_bytes;
@@ -1517,8 +1904,49 @@ unsigned pdkb_get_hovered(const PDKeyboard* kb)
     if (key < 0x20) return 0;
     if (kb->altstate)
     {
-        key = _pdkb_apply_sutegana(key);
-        key = toupper(key);
+        key = _pdkb_apply_altstate(key);
     }
     return (unsigned)key;
+}
+
+static uint32_t _pdkb_fold_case(uint32_t c)
+{
+    // toupper is only defined for unsigned char values
+    if (c < 0x80) return (uint32_t)toupper((int)c);
+    return c;
+}
+
+void pdkb_add_longpress_entry(PDKeyboard* kb, uint32_t basekey, uint32_t longpress_key)
+{
+    if (!kb || !basekey || !longpress_key) return;
+
+    uint32_t folded = _pdkb_fold_case(basekey);
+
+    for (size_t p = 0; p < PDKBP_COUNT; ++p)
+    {
+        PDKeyboardPage* page = &kb->pages[p];
+        if (page->type == PDKBP_None) continue;
+
+        for (size_t i = 0; i < MAXROWS; ++i)
+        {
+            for (size_t j = 0; j < MAXROWLEN; ++j)
+            {
+                uint32_t key = page->rows[i][j];
+                if (!key || _pdkb_fold_case(key) != folded) continue;
+
+                // don't add the same entry twice
+                bool present = false;
+                const uint32_t* lp = page->rows_longpress[i][j];
+                for (size_t n = 0; lp && lp[n]; ++n)
+                {
+                    if (lp[n] == longpress_key) { present = true; break; }
+                }
+
+                if (!present)
+                {
+                    _pdkb_lp_append(page, i, j, longpress_key);
+                }
+            }
+        }
+    }
 }
