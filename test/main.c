@@ -36,7 +36,7 @@ int eventHandler(PlaydateAPI* playdate, PDSystemEvent event, uint32_t arg)
     if (event == kEventInit)
     {
         kb = pdkb_new(pd, PDKBF_DEFAULT, NULL, NULL);
-        font = pd->graphics->loadFont("/Disk/System/Fonts/Asheville-Sans-14-Bold", NULL);
+        font = pd->graphics->loadFont("/System/Fonts/Asheville-Sans-14-Bold", NULL);
         pd->system->setUpdateCallback(update, NULL);
     }
 

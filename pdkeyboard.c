@@ -1,3 +1,4 @@
+#include <ctype.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include <string.h>
@@ -24,28 +25,28 @@ static unsigned backspace_height = 16;
 static LCDBitmap* backspace_img;
 
 static unsigned char confirm_data[] = {
-    ~0x00, ~0x00, ~0x00, ~0x06, ~0x00, ~0x0E, ~0x00, ~0x0C,
-    ~0x00, ~0x18, ~0x00, ~0x38, ~0x00, ~0x30, ~0x00, ~0x60,
-    ~0x00, ~0x60, ~0x00, ~0xC0, ~0x00, ~0xC0, ~0x61, ~0x80,
-    ~0x79, ~0x80, ~0x1F, ~0x80, ~0x07, ~0x00, ~0x03, ~0x00
+    0xFF, 0xFF, 0xFF, 0xF9, 0xFF, 0xF1, 0xFF, 0xF3,
+    0xFF, 0xE7, 0xFF, 0xC7, 0xFF, 0xCF, 0xFF, 0x9F,
+    0xFF, 0x9F, 0xFF, 0x3F, 0xFF, 0x3F, 0x9E, 0x7F,
+    0x86, 0x7F, 0xE0, 0x7F, 0xF8, 0xFF, 0xFC, 0xFF
 };
 static unsigned confirm_width = 16;
 static unsigned confirm_height = 16;
 static unsigned char confirm_jp_data[] = {
-    ~0x07, ~0xE0, ~0x1F, ~0xF8, ~0x38, ~0x1C, ~0x60, ~0x06,
-    ~0x61, ~0x86, ~0xC0, ~0xC3, ~0xC0, ~0x63, ~0xCF, ~0xF3,
-    ~0xCF, ~0xF3, ~0xC0, ~0x63, ~0xC0, ~0xC3, ~0x61, ~0x86,
-    ~0x60, ~0x06, ~0x38, ~0x1C, ~0x1F, ~0xF8, ~0x07, ~0xE0
+    0xF8, 0x1F, 0xE0, 0x07, 0xC7, 0xE3, 0x9F, 0xF9,
+    0x9E, 0x79, 0x3F, 0x3C, 0x3F, 0x9C, 0x30, 0x0C,
+    0x30, 0x0C, 0x3F, 0x9C, 0x3F, 0x3C, 0x9E, 0x79,
+    0x9F, 0xF9, 0xC7, 0xE3, 0xE0, 0x07, 0xF8, 0x1F
 };
 static unsigned confirm_jp_width = 16;
 static unsigned confirm_jp_height = 16;
 static LCDBitmap* confirm_img;
 
 static unsigned char switch_data[] = {
-    ~0x00, ~0x00, ~0x18, ~0x00, ~0x0C, ~0x00, ~0xFF, ~0x80,
-    ~0x63, ~0x00, ~0x63, ~0x3C, ~0x32, ~0x66, ~0x1C, ~0x66,
-    ~0x0C, ~0x66, ~0x36, ~0xFF, ~0x62, ~0xC3, ~0x00, ~0xC3,
-    ~0x00, ~0xC3, ~0x00, ~0x00, ~0x00, ~0x00, ~0x00, ~0x00
+    0xFF, 0xFF, 0xE7, 0xFF, 0xF3, 0xFF, 0x00, 0x7F,
+    0x9C, 0xFF, 0x9C, 0xC3, 0xCD, 0x99, 0xE3, 0x99,
+    0xF3, 0x99, 0xC9, 0x00, 0x9D, 0x3C, 0xFF, 0x3C,
+    0xFF, 0x3C, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
 };
 static unsigned switch_width = 16;
 static unsigned switch_height = 16;
@@ -70,6 +71,36 @@ static unsigned char handakuten_data[] = {
 static unsigned handakuten_width = 16;
 static unsigned handakuten_height = 16;
 static LCDBitmap* handakuten_img;
+
+static unsigned char shrink_data[] = {
+    0xFE, 0x7F, 0xFE, 0x7F, 0xFE, 0x7F, 0xFE, 0x7F,
+    0xFE, 0x7F, 0xFE, 0x7F, 0xFE, 0x7F, 0xFE, 0x7F,
+    0xFE, 0x7F, 0xDE, 0x7B, 0xCE, 0x73, 0xE6, 0x67,
+    0xF2, 0x4F, 0xF8, 0x1F, 0xFC, 0x3F, 0xFE, 0x7F
+};
+static unsigned shrink_width = 16;
+static unsigned shrink_height = 16;
+static LCDBitmap* shrink_img;
+
+static unsigned char upper_data[] = {
+    0xFE, 0x7F, 0xFC, 0x3F, 0xF8, 0x1F, 0xF2, 0x4F,
+    0xE6, 0x67, 0xCE, 0x73, 0xDE, 0x7B, 0xFE, 0x7F,
+    0xFE, 0x7F, 0xFE, 0x7F, 0xFE, 0x7F, 0xFE, 0x7F,
+    0xFE, 0x7F, 0xFE, 0x7F, 0xFE, 0x7F, 0xFE, 0x7F
+};
+static unsigned upper_width = 16;
+static unsigned upper_height = 16;
+static LCDBitmap* upper_img;
+
+static unsigned char upper_latch_data[] = {
+    0xFE, 0x7F, 0xFC, 0x3F, 0xF9, 0x9F, 0xF3, 0xCF,
+    0xE7, 0xE7, 0xCF, 0xF3, 0x99, 0x99, 0xB1, 0x8D,
+    0xA1, 0x85, 0x89, 0x91, 0x99, 0x99, 0xF9, 0x9F,
+    0xF9, 0x9F, 0xF9, 0x9F, 0xF9, 0x9F, 0xF8, 0x1F
+};
+static unsigned upper_latch_width = 16;
+static unsigned upper_latch_height = 16;
+static LCDBitmap* upper_latch_img;
 
 static LCDBitmap* _pdkb_load_image(const uint8_t* data, int width, int height)
 {
@@ -113,7 +144,9 @@ enum PDKBPageType {
 #define KEY_CONFIRM 4
 #define KEY_DAKUTEN 5
 #define KEY_HANDAKUTEN 6
+#define KEY_UPPER 7
 #define KEY_BACKSPACE 8
+#define KEY_SHRINK 9
 
 typedef struct PDKeyboardPage {
     enum PDKBPageType type;
@@ -141,6 +174,7 @@ typedef struct PDKeyboard {
     size_t sel_row;
     size_t sel_idx;
     bool sel_down;
+    int altstate;
 
     PDStringEncoding encoding;
 
@@ -384,7 +418,7 @@ static void _pdkb_update_anim(PDKeyboard* kb, float dt)
     }
 }
 
-static size_t _pdkb_count_row_keys(PDKeyboardPage* page, size_t row)
+static size_t _pdkb_count_row_keys(const PDKeyboardPage* page, size_t row)
 {
     size_t count = 0;
     for (size_t i = 0; i < MAXROWLEN; ++i)
@@ -395,7 +429,7 @@ static size_t _pdkb_count_row_keys(PDKeyboardPage* page, size_t row)
     return count;
 }
 
-static uint32_t _pdkb_count_row_get_key(PDKeyboardPage* page, size_t row, size_t idx)
+static uint32_t _pdkb_count_row_get_key(const PDKeyboardPage* page, size_t row, size_t idx)
 {
     for (size_t i = 0; i < MAXROWLEN; ++i)
     {
@@ -408,12 +442,14 @@ static uint32_t _pdkb_count_row_get_key(PDKeyboardPage* page, size_t row, size_t
     return 0;
 }
 
-static int _pdkb_get_key_width(PDKeyboardPage* page, size_t row)
+static int _pdkb_get_key_width(const PDKeyboardPage* page, size_t row)
 {
-    return LCD_COLUMNS / (int)_pdkb_count_row_keys(page, row);
+    size_t keys = _pdkb_count_row_keys(page, row);
+    if (keys == 0) return LCD_COLUMNS;
+    return LCD_COLUMNS / (int)keys;
 }
 
-static int _pdkb_get_key_height(PDKeyboardPage* page)
+static int _pdkb_get_key_height(const PDKeyboardPage* page)
 {
     if (page->rows_c == 0) return 1;
     unsigned size = (120 - 2) / page->rows_c;
@@ -421,14 +457,31 @@ static int _pdkb_get_key_height(PDKeyboardPage* page)
     return (int)size;
 }
 
-static int _pdb_get_key_offy(PDKeyboardPage* page)
+static int _pdb_get_key_offy(const PDKeyboardPage* page)
 {
     return 2 + (118 % _pdkb_get_key_height(page)) / 2;
 }
 
-static int _pdkb_get_key_offx(PDKeyboardPage* page, size_t row)
+static int _pdkb_get_key_offx(const PDKeyboardPage* page, size_t row)
 {
     return (LCD_COLUMNS % _pdkb_get_key_width(page, row)) / 2;
+}
+
+static uint32_t _pdkb_apply_sutegana(uint32_t c)
+{
+    switch (c)
+    {
+    case U'あ': return U'ぁ'; case U'い': return U'ぃ'; case U'う': return U'ぅ';
+    case U'え': return U'ぇ'; case U'お': return U'ぉ';
+    case U'つ': return U'っ';
+    case U'や': return U'ゃ'; case U'ゆ': return U'ゅ'; case U'よ': return U'ょ';
+
+    case U'ア': return U'ァ'; case U'イ': return U'ィ'; case U'ウ': return U'ゥ';
+    case U'エ': return U'ェ'; case U'オ': return U'ォ';
+    case U'ツ': return U'ッ';
+    case U'ヤ': return U'ャ'; case U'ユ': return U'ュ'; case U'ヨ': return U'ョ';
+    default: return c;
+    }
 }
 
 static uint32_t _pdkb_apply_dakuten(uint32_t c, bool is_handakuten)
@@ -437,16 +490,16 @@ static uint32_t _pdkb_apply_dakuten(uint32_t c, bool is_handakuten)
     {
         switch (c)
         {
-        case 'は': return 'ぱ';
-        case 'ひ': return 'ぴ';
-        case 'ふ': return 'ぷ';
-        case 'へ': return 'ぺ';
-        case 'ほ': return 'ぽ';
-        case 'ハ': return 'パ';
-        case 'ヒ': return 'ピ';
-        case 'フ': return 'プ';
-        case 'ヘ': return 'ペ';
-        case 'ホ': return 'ポ';
+        case U'は': return U'ぱ';
+        case U'ひ': return U'ぴ';
+        case U'ふ': return U'ぷ';
+        case U'へ': return U'ぺ';
+        case U'ほ': return U'ぽ';
+        case U'ハ': return U'パ';
+        case U'ヒ': return U'ピ';
+        case U'フ': return U'プ';
+        case U'ヘ': return U'ペ';
+        case U'ホ': return U'ポ';
         default: return c;
         }
     }
@@ -454,23 +507,23 @@ static uint32_t _pdkb_apply_dakuten(uint32_t c, bool is_handakuten)
     {
         switch (c)
         {
-        case 'か': return 'が'; case 'き': return 'ぎ'; case 'く': return 'ぐ';
-        case 'け': return 'げ'; case 'こ': return 'ご';
-        case 'さ': return 'ざ'; case 'し': return 'じ'; case 'す': return 'ず';
-        case 'せ': return 'ぜ'; case 'そ': return 'ぞ';
-        case 'た': return 'だ'; case 'ち': return 'ぢ'; case 'つ': return 'づ';
-        case 'て': return 'で'; case 'と': return 'ど';
-        case 'は': return 'ば'; case 'ひ': return 'び'; case 'ふ': return 'ぶ';
-        case 'へ': return 'べ'; case 'ほ': return 'ぼ';
-        case 'か': return 'が'; case 'キ': return 'ギ'; case 'ク': return 'グ';
-        case 'ケ': return 'ゲ'; case 'コ': return 'ゴ';
-        case 'サ': return 'ザ'; case 'シ': return 'ジ'; case 'ス': return 'ズ';
-        case 'セ': return 'ゼ'; case 'ソ': return 'ゾ';
-        case 'タ': return 'ダ'; case 'チ': return 'ヂ'; case 'ツ': return 'ヅ';
-        case 'テ': return 'デ'; case 'ト': return 'ド';
-        case 'ハ': return 'バ'; case 'ヒ': return 'ビ'; case 'フ': return 'ブ';
-        case 'ヘ': return 'ベ'; case 'ホ': return 'ボ';
-        case 'ウ': return 'ヴ'; case 'ワ': return 'ヷ';
+        case U'か': return U'が'; case U'き': return U'ぎ'; case U'く': return U'ぐ';
+        case U'け': return U'げ'; case U'こ': return U'ご';
+        case U'さ': return U'ざ'; case U'し': return U'じ'; case U'す': return U'ず';
+        case U'せ': return U'ぜ'; case U'そ': return U'ぞ';
+        case U'た': return U'だ'; case U'ち': return U'ぢ'; case U'つ': return U'づ';
+        case U'て': return U'で'; case U'と': return U'ど';
+        case U'は': return U'ば'; case U'ひ': return U'び'; case U'ふ': return U'ぶ';
+        case U'へ': return U'べ'; case U'ほ': return U'ぼ';
+        case U'カ': return U'ガ'; case U'キ': return U'ギ'; case U'ク': return U'グ';
+        case U'ケ': return U'ゲ'; case U'コ': return U'ゴ';
+        case U'サ': return U'ザ'; case U'シ': return U'ジ'; case U'ス': return U'ズ';
+        case U'セ': return U'ゼ'; case U'ソ': return U'ゾ';
+        case U'タ': return U'ダ'; case U'チ': return U'ヂ'; case U'ツ': return U'ヅ';
+        case U'テ': return U'デ'; case U'ト': return U'ド';
+        case U'ハ': return U'バ'; case U'ヒ': return U'ビ'; case U'フ': return U'ブ';
+        case U'ヘ': return U'ベ'; case U'ホ': return U'ボ';
+        case U'ウ': return U'ヴ'; case U'ワ': return U'ヷ';
         default: return c;
         }
     }
@@ -522,6 +575,19 @@ static void _pdkb_draw_key(PDKeyboard* kb, uint32_t key, int kx, int ky, int kw,
         case KEY_HANDAKUTEN:
             CACHEIMG(img, handakuten, handakuten);
             break;
+        case KEY_SHRINK:
+            CACHEIMG(img, shrink, shrink);
+            break;
+        case KEY_UPPER:
+            if (kb->altstate == 2)
+            {
+                CACHEIMG(img, upper_latch, upper_latch);
+            }
+            else
+            {
+                CACHEIMG(img, upper, upper);
+            }
+            break;
         default:
             break;
         }
@@ -538,6 +604,15 @@ static void _pdkb_draw_key(PDKeyboard* kb, uint32_t key, int kx, int ky, int kw,
         // standard unicode
         char buff[5];
         memset(buff, 0, sizeof(buff));
+        
+        uint32_t orgkey = key;
+        
+        if (kb->altstate)
+        {
+            key = _pdkb_apply_sutegana(key);
+            key = toupper(key);
+        }
+        
         _encode(key, kUTF8Encoding, buff);
         int textwidth = pd->graphics->getTextWidth(font, buff, 1, kUTF8Encoding, 0);
         pd->graphics->drawText(buff, 1, kUTF8Encoding, kx + kw/2 - textwidth/2, ky + kh/2-7);
@@ -625,6 +700,8 @@ static void _pdkb_draw(PDKeyboard* kb)
 
 static void _pdkb_page_advance(PDKeyboard* kb)
 {
+    kb->altstate = 0;
+    
     size_t start = kb->current_page;
     for (int i = 0; i < PDKBP_COUNT; ++i)
     {
@@ -639,12 +716,17 @@ static void _pdkb_page_advance(PDKeyboard* kb)
     }
 }
 
-static void _pdkb_type(PDKeyboard* kb)
+static void _pdkb_type(PDKeyboard* kb, uint32_t key)
 {
     if (key >= 0x20)
     {
-        // printable character: append to content
         char encoded[5];
+        uint32_t orgkey = key;
+        if (kb->altstate)
+        {
+            key = _pdkb_apply_sutegana(key);
+            key = toupper(key);
+        }
         size_t elen = _encode(key, kb->encoding, encoded);
         if (elen > 0)
         {
@@ -665,6 +747,11 @@ static void _pdkb_type(PDKeyboard* kb)
                 kb->current_byte += elen;
                 kb->current_codepoint++;
                 kb->content[kb->current_byte] = 0;
+
+                if (key != orgkey && kb->altstate == 1)
+                {
+                    kb->altstate = 0;
+                }
             }
         }
     }
@@ -678,27 +765,44 @@ static void _pdkb_type(PDKeyboard* kb)
             kb->current_codepoint--;
         }
     }
+    else if (key == KEY_UPPER)
+    {
+        kb->altstate = (kb->altstate + 1) % 3;
+    }
+    else if (key == KEY_SHRINK)
+    {
+        kb->altstate = !kb->altstate;
+    }
     else if (key == KEY_DAKUTEN || key == KEY_HANDAKUTEN)
     {
-        if (kb->current_byte > 0 && kb->current_codepoint > 0)
+        if (kb->current_byte == 0 || kb->current_codepoint == 0)
+        {
+            kb->shake = 8;
+        }
+        else
         {
             size_t prev_byte = _codepoint_prev(kb->content, kb->current_byte, kb->encoding);
-            size_t cp_len = kb->current_byte - prev_byte;
 
-            uint32_t last_cp = _decode(prev_byte, kb->encoding, NULL);
+            uint32_t last_cp = _decode(kb->content + prev_byte, kb->encoding, NULL);
             
-            uint32_t modified = _pdkb_apply_dakuten(last_cp, key == KEY_HANDAKUTEN);
+            uint32_t modified;
+            modified = _pdkb_apply_dakuten(last_cp, key == KEY_HANDAKUTEN);
+
             if (modified && modified != last_cp)
             {
                 char encoded[5];
                 size_t elen = _encode(modified, kb->encoding, encoded);
                 if (elen > 0)
                 {
-                    _pdkb_ensure_capacity(kb, kb->current_byte + elen + 1);
+                    _pdkb_ensure_capacity(kb, prev_byte + elen + 1);
                     memcpy(kb->content + prev_byte, encoded, elen);
-                    kb->current_byte += elen;
+                    kb->current_byte = prev_byte + elen;
                     kb->content[kb->current_byte] = 0;
                 }
+            }
+            else
+            {
+                kb->shake = 8;
             }
         }
     }
@@ -710,6 +814,19 @@ static void _pdkb_type(PDKeyboard* kb)
     else if (key == KEY_SWITCH)
     {
         _pdkb_page_advance(kb);
+        
+        // select the switch key
+        for (size_t i = 0; i < MAXROWS; ++i)
+        {
+            for (size_t j = 0; j < MAXROWLEN; ++j)
+            {
+                if (kb->pages[kb->current_page].rows[i][j] == KEY_SWITCH)
+                {
+                    kb->sel_row = i;
+                    kb->sel_idx = j;
+                }
+            }
+        }
     }
 }
 
@@ -848,7 +965,7 @@ void pdkb_update(PDKeyboard* kb, float dt)
     {
         uint32_t key = _pdkb_count_row_get_key(page, kb->sel_row, kb->sel_idx);
 
-        _pdkb_type(pd, key);
+        _pdkb_type(kb, key);
     }
 }
 
@@ -865,7 +982,7 @@ PDKeyboard* pdkb_new(PlaydateAPI* _pd, PDKeyboardFlags f, const uint32_t* leftke
     kb->is_jp_region = pd->system->getLanguage() == kPDLanguageJapanese;
     
     int pagec = !!(f&(PDKBF_LATIN_LOWERCASE | PDKBF_LATIN_UPPERCASE))
-        +  !!(f & PDKBF_SYMBOLS) + !!(f & PDKBF_NUMERIC)
+        +  ((f & PDKBF_SYMBOLS) == PDKBF_SYMBOLS) + !!(f & PDKBF_NUMERIC)
         + !!(f & PDKBF_JA_HIRAGANA) + !!(f & PDKBF_JA_KATAKANA);
         
     int spacekey = ' ';
@@ -874,10 +991,81 @@ PDKeyboard* pdkb_new(PlaydateAPI* _pd, PDKeyboardFlags f, const uint32_t* leftke
         spacekey = KEY_FILLER;
     }
 
-    if (f & PDKBF_SYMBOLS)
+    if ((f & PDKBF_SYMBOLS) == PDKBF_SYMBOLS)
     {
         kb->pages[PDKBP_Symbols].type = PDKBP_Symbols;
         kb->current_page = PDKBP_Symbols;
+
+        kb->pages[PDKBP_Symbols].rows_c = 4;
+        
+        int r = 0;
+
+        kb->pages[PDKBP_Symbols].rows[r][0] = '+';
+        kb->pages[PDKBP_Symbols].rows[r][1] = '-';
+        kb->pages[PDKBP_Symbols].rows[r][2] = '=';
+        kb->pages[PDKBP_Symbols].rows[r][3] = '@';
+        kb->pages[PDKBP_Symbols].rows[r][4] = '#';
+        kb->pages[PDKBP_Symbols].rows[r][5] = '$';
+        kb->pages[PDKBP_Symbols].rows[r][6] = '%';
+        kb->pages[PDKBP_Symbols].rows[r][7] = '^';
+        kb->pages[PDKBP_Symbols].rows[r][8] = '&';
+        kb->pages[PDKBP_Symbols].rows[r][9] = KEY_BACKSPACE;
+        kb->pages[PDKBP_Symbols].rows[r][10] = KEY_EXTEND;
+
+        r++;
+        
+        kb->pages[PDKBP_Symbols].rows[r][0] = '!';
+        kb->pages[PDKBP_Symbols].rows[r][1] = '?';
+        kb->pages[PDKBP_Symbols].rows[r][2] = '.';
+        kb->pages[PDKBP_Symbols].rows[r][3] = ',';
+        kb->pages[PDKBP_Symbols].rows[r][4] = ':';
+        kb->pages[PDKBP_Symbols].rows[r][5] = ';';
+        kb->pages[PDKBP_Symbols].rows[r][6] = '_';
+        kb->pages[PDKBP_Symbols].rows[r][7] = '\'';
+        kb->pages[PDKBP_Symbols].rows[r][8] = '"';
+        kb->pages[PDKBP_Symbols].rows[r][9] = '*';
+        kb->pages[PDKBP_Symbols].rows[r][10] = '~';
+        
+        r++;
+
+        kb->pages[PDKBP_Symbols].rows[r][0] = '(';
+        kb->pages[PDKBP_Symbols].rows[r][1] = ')';
+        kb->pages[PDKBP_Symbols].rows[r][2] = '[';
+        kb->pages[PDKBP_Symbols].rows[r][3] = ']';
+        kb->pages[PDKBP_Symbols].rows[r][4] = '/';
+        kb->pages[PDKBP_Symbols].rows[r][5] = '|';
+        kb->pages[PDKBP_Symbols].rows[r][6] = '\\';
+        kb->pages[PDKBP_Symbols].rows[r][7] = '<';
+        kb->pages[PDKBP_Symbols].rows[r][8] = '>';
+        kb->pages[PDKBP_Symbols].rows[r][9] = '{';
+        kb->pages[PDKBP_Symbols].rows[r][10] = '}';
+
+        size_t ki = 0;
+        if (pagec >= 2)
+        {
+            kb->pages[PDKBP_Symbols].rows[3][ki++] = KEY_SWITCH;
+        }
+
+        for (const uint32_t* kv = leftkeys; kv && *kv; ++kv)
+        {
+            kb->pages[PDKBP_Symbols].rows[3][ki++] = *kv;
+        }
+
+        kb->pages[PDKBP_Symbols].rows[3][ki++] = spacekey;
+        kb->pages[PDKBP_Symbols].rows[3][ki++] = KEY_EXTEND;
+        kb->pages[PDKBP_Symbols].rows[3][ki++] = KEY_EXTEND;
+        kb->pages[PDKBP_Symbols].rows[3][ki++] = KEY_EXTEND;
+        kb->pages[PDKBP_Symbols].rows[3][ki++] = KEY_EXTEND;
+
+        for (const uint32_t* kv = rightkeys; kv && *kv; ++kv)
+        {
+            kb->pages[PDKBP_Symbols].rows[3][ki++] = *kv;
+        }
+
+        if (kb->flags & PDKBF_CONFIRM)
+        {
+            kb->pages[PDKBP_Symbols].rows[3][6] = KEY_CONFIRM;
+        }
     }
 
     if (f & PDKBF_NUMERIC)
@@ -885,53 +1073,45 @@ PDKeyboard* pdkb_new(PlaydateAPI* _pd, PDKeyboardFlags f, const uint32_t* leftke
         kb->pages[PDKBP_Numeric].type = PDKBP_Numeric;
         kb->current_page = PDKBP_Numeric;
 
-        kb->pages[PDKBP_Numeric].rows_c = 5;
+        kb->pages[PDKBP_Numeric].rows_c = 4;
 
-        // row 0: 9 8 7
         kb->pages[PDKBP_Numeric].rows[0][0] = '9';
         kb->pages[PDKBP_Numeric].rows[0][1] = '8';
         kb->pages[PDKBP_Numeric].rows[0][2] = '7';
 
-        // row 1: 6 5 4
         kb->pages[PDKBP_Numeric].rows[1][0] = '6';
         kb->pages[PDKBP_Numeric].rows[1][1] = '5';
         kb->pages[PDKBP_Numeric].rows[1][2] = '4';
 
-        // row 2: 3 2 1
         kb->pages[PDKBP_Numeric].rows[2][0] = '3';
         kb->pages[PDKBP_Numeric].rows[2][1] = '2';
         kb->pages[PDKBP_Numeric].rows[2][2] = '1';
+        
+        const bool syms = !!(kb->flags & PDKBF_LATIN_PUNCTUATION);
 
-        // row 3: space 0 . -
-        kb->pages[PDKBP_Numeric].rows[3][0] = spacekey;
-        kb->pages[PDKBP_Numeric].rows[3][1] = '0';
-        kb->pages[PDKBP_Numeric].rows[3][2] = '.';
-        kb->pages[PDKBP_Numeric].rows[3][3] = '-';
-
-        size_t ki = 0;
+        kb->pages[PDKBP_Numeric].rows[3][0] = KEY_FILLER;
+        kb->pages[PDKBP_Numeric].rows[3][1] = (syms) ? '-' : KEY_EXTEND;
+        kb->pages[PDKBP_Numeric].rows[3][2] = '0';
+        kb->pages[PDKBP_Numeric].rows[3][3] = KEY_EXTEND;
+        kb->pages[PDKBP_Numeric].rows[3][4] = (syms) ? '.' : KEY_FILLER;
+        
         if (pagec >= 2)
         {
-            kb->pages[PDKBP_Numeric].rows[4][ki++] = KEY_SWITCH;
-        }
-
-        for (const uint32_t* kv = leftkeys; kv && *kv; ++kv)
-        {
-            kb->pages[PDKBP_Numeric].rows[4][ki++] = *kv;
-        }
-
-        kb->pages[PDKBP_Numeric].rows[4][ki++] = spacekey;
-        kb->pages[PDKBP_Numeric].rows[4][ki++] = KEY_EXTEND;
-        kb->pages[PDKBP_Numeric].rows[4][ki++] = KEY_EXTEND;
-        kb->pages[PDKBP_Numeric].rows[4][ki++] = KEY_EXTEND;
-
-        for (const uint32_t* kv = rightkeys; kv && *kv; ++kv)
-        {
-            kb->pages[PDKBP_Numeric].rows[4][ki++] = *kv;
+            kb->pages[PDKBP_Numeric].rows[3][0] = KEY_SWITCH;
         }
 
         if (kb->flags & PDKBF_CONFIRM)
         {
-            kb->pages[PDKBP_Numeric].rows[4][7] = KEY_CONFIRM;
+            kb->pages[PDKBP_Numeric].rows[3][5] = KEY_CONFIRM;
+            if (kb->pages[PDKBP_Numeric].rows[3][4] == KEY_FILLER)
+            {
+                kb->pages[PDKBP_Numeric].rows[3][4] = KEY_CONFIRM;
+                kb->pages[PDKBP_Numeric].rows[3][5] = KEY_EXTEND;
+            }
+        }
+        else
+        {
+            kb->pages[PDKBP_Numeric].rows[3][5] = KEY_FILLER;
         }
     }
 
@@ -940,78 +1120,73 @@ PDKeyboard* pdkb_new(PlaydateAPI* _pd, PDKeyboardFlags f, const uint32_t* leftke
         kb->pages[PDKBP_JA_Katakana].type = PDKBP_JA_Katakana;
         kb->current_page = PDKBP_JA_Katakana;
 
-        kb->pages[PDKBP_JA_Katakana].rows_c = 6;
+        kb->pages[PDKBP_JA_Katakana].rows_c = 5;
 
         kb->pages[PDKBP_JA_Katakana].rows[0][0] = ' ';
-        kb->pages[PDKBP_JA_Katakana].rows[0][1] = 'ア';
-        kb->pages[PDKBP_JA_Katakana].rows[0][2] = 'カ';
-        kb->pages[PDKBP_JA_Katakana].rows[0][3] = 'サ';
-        kb->pages[PDKBP_JA_Katakana].rows[0][4] = 'タ';
-        kb->pages[PDKBP_JA_Katakana].rows[0][5] = 'ナ';
-        kb->pages[PDKBP_JA_Katakana].rows[0][6] = 'ハ';
-        kb->pages[PDKBP_JA_Katakana].rows[0][7] = 'マ';
-        kb->pages[PDKBP_JA_Katakana].rows[0][8] = 'ラ';
-        kb->pages[PDKBP_JA_Katakana].rows[0][9] = 'ヤ';
-        kb->pages[PDKBP_JA_Katakana].rows[0][10] = 'ワ';
-        kb->pages[PDKBP_JA_Katakana].rows[0][11] = KEY_FILLER;
+        kb->pages[PDKBP_JA_Katakana].rows[1][0] = U'ー';
+        kb->pages[PDKBP_JA_Katakana].rows[2][0] = U'・';
+        kb->pages[PDKBP_JA_Katakana].rows[3][0] = KEY_SHRINK;
+        kb->pages[PDKBP_JA_Katakana].rows[4][0] = (pagec >= 2) ? KEY_SWITCH : KEY_FILLER;
 
-        kb->pages[PDKBP_JA_Katakana].rows[1][0] = '、';
-        kb->pages[PDKBP_JA_Katakana].rows[1][1] = 'イ';
-        kb->pages[PDKBP_JA_Katakana].rows[1][2] = 'キ';
-        kb->pages[PDKBP_JA_Katakana].rows[1][3] = 'シ';
-        kb->pages[PDKBP_JA_Katakana].rows[1][4] = 'チ';
-        kb->pages[PDKBP_JA_Katakana].rows[1][5] = 'ニ';
-        kb->pages[PDKBP_JA_Katakana].rows[1][6] = 'ヒ';
-        kb->pages[PDKBP_JA_Katakana].rows[1][7] = 'ミ';
-        kb->pages[PDKBP_JA_Katakana].rows[1][8] = 'リ';
-        kb->pages[PDKBP_JA_Katakana].rows[1][9] = 'ユ';
-        kb->pages[PDKBP_JA_Katakana].rows[1][10] = KEY_FILLER;
-        kb->pages[PDKBP_JA_Katakana].rows[1][11] = KEY_FILLER;
+        kb->pages[PDKBP_JA_Katakana].rows[0][1] = U'ア';
+        kb->pages[PDKBP_JA_Katakana].rows[1][1] = U'イ';
+        kb->pages[PDKBP_JA_Katakana].rows[2][1] = U'ウ';
+        kb->pages[PDKBP_JA_Katakana].rows[3][1] = U'エ';
+        kb->pages[PDKBP_JA_Katakana].rows[4][1] = U'オ';
 
-        kb->pages[PDKBP_JA_Katakana].rows[2][0] = '。';
-        kb->pages[PDKBP_JA_Katakana].rows[2][1] = 'ウ';
-        kb->pages[PDKBP_JA_Katakana].rows[2][2] = 'ク';
-        kb->pages[PDKBP_JA_Katakana].rows[2][3] = 'ス';
-        kb->pages[PDKBP_JA_Katakana].rows[2][4] = 'ツ';
-        kb->pages[PDKBP_JA_Katakana].rows[2][5] = 'ヌ';
-        kb->pages[PDKBP_JA_Katakana].rows[2][6] = 'フ';
-        kb->pages[PDKBP_JA_Katakana].rows[2][7] = 'ム';
-        kb->pages[PDKBP_JA_Katakana].rows[2][8] = 'ル';
-        kb->pages[PDKBP_JA_Katakana].rows[2][9] = 'ヨ';
-        kb->pages[PDKBP_JA_Katakana].rows[2][10] = KEY_FILLER;
-        kb->pages[PDKBP_JA_Katakana].rows[2][11] = KEY_FILLER;
+        kb->pages[PDKBP_JA_Katakana].rows[0][2] = U'カ';
+        kb->pages[PDKBP_JA_Katakana].rows[1][2] = U'キ';
+        kb->pages[PDKBP_JA_Katakana].rows[2][2] = U'ク';
+        kb->pages[PDKBP_JA_Katakana].rows[3][2] = U'ケ';
+        kb->pages[PDKBP_JA_Katakana].rows[4][2] = U'コ';
 
-        kb->pages[PDKBP_JA_Katakana].rows[3][0] = KEY_FILLER;
-        kb->pages[PDKBP_JA_Katakana].rows[3][1] = 'エ';
-        kb->pages[PDKBP_JA_Katakana].rows[3][2] = 'ケ';
-        kb->pages[PDKBP_JA_Katakana].rows[3][3] = 'セ';
-        kb->pages[PDKBP_JA_Katakana].rows[3][4] = 'テ';
-        kb->pages[PDKBP_JA_Katakana].rows[3][5] = 'ネ';
-        kb->pages[PDKBP_JA_Katakana].rows[3][6] = 'ヘ';
-        kb->pages[PDKBP_JA_Katakana].rows[3][7] = 'メ';
-        kb->pages[PDKBP_JA_Katakana].rows[3][8] = 'レ';
-        kb->pages[PDKBP_JA_Katakana].rows[3][9] = KEY_FILLER;
-        kb->pages[PDKBP_JA_Katakana].rows[3][10] = KEY_FILLER;
-        kb->pages[PDKBP_JA_Katakana].rows[3][11] = KEY_FILLER;
+        kb->pages[PDKBP_JA_Katakana].rows[0][3] = U'サ';
+        kb->pages[PDKBP_JA_Katakana].rows[1][3] = U'シ';
+        kb->pages[PDKBP_JA_Katakana].rows[2][3] = U'ス';
+        kb->pages[PDKBP_JA_Katakana].rows[3][3] = U'セ';
+        kb->pages[PDKBP_JA_Katakana].rows[4][3] = U'ソ';
 
-        kb->pages[PDKBP_JA_Katakana].rows[4][0] = KEY_FILLER;
-        kb->pages[PDKBP_JA_Katakana].rows[4][1] = 'オ';
-        kb->pages[PDKBP_JA_Katakana].rows[4][2] = 'コ';
-        kb->pages[PDKBP_JA_Katakana].rows[4][3] = 'ソ';
-        kb->pages[PDKBP_JA_Katakana].rows[4][4] = 'ト';
-        kb->pages[PDKBP_JA_Katakana].rows[4][5] = 'ノ';
-        kb->pages[PDKBP_JA_Katakana].rows[4][6] = 'ホ';
-        kb->pages[PDKBP_JA_Katakana].rows[4][7] = 'モ';
-        kb->pages[PDKBP_JA_Katakana].rows[4][8] = 'ロ';
-        kb->pages[PDKBP_JA_Katakana].rows[4][9] = KEY_FILLER;
-        kb->pages[PDKBP_JA_Katakana].rows[4][10] = 'ヲ';
-        kb->pages[PDKBP_JA_Katakana].rows[4][11] = 'ン';
+        kb->pages[PDKBP_JA_Katakana].rows[0][4] = U'タ';
+        kb->pages[PDKBP_JA_Katakana].rows[1][4] = U'チ';
+        kb->pages[PDKBP_JA_Katakana].rows[2][4] = U'ツ';
+        kb->pages[PDKBP_JA_Katakana].rows[3][4] = U'テ';
+        kb->pages[PDKBP_JA_Katakana].rows[4][4] = U'ト';
 
-        kb->pages[PDKBP_JA_Katakana].rows[5][0] = KEY_DAKUTEN;
-        kb->pages[PDKBP_JA_Katakana].rows[5][1] = KEY_HANDAKUTEN;
-        kb->pages[PDKBP_JA_Katakana].rows[5][2] = KEY_BACKSPACE;
-        if (pagec >= 2)
-            kb->pages[PDKBP_JA_Katakana].rows[5][3] = KEY_SWITCH;
+        kb->pages[PDKBP_JA_Katakana].rows[0][5] = U'ナ';
+        kb->pages[PDKBP_JA_Katakana].rows[1][5] = U'ニ';
+        kb->pages[PDKBP_JA_Katakana].rows[2][5] = U'ヌ';
+        kb->pages[PDKBP_JA_Katakana].rows[3][5] = U'ネ';
+        kb->pages[PDKBP_JA_Katakana].rows[4][5] = U'ノ';
+
+        kb->pages[PDKBP_JA_Katakana].rows[0][6] = U'ハ';
+        kb->pages[PDKBP_JA_Katakana].rows[1][6] = U'ヒ';
+        kb->pages[PDKBP_JA_Katakana].rows[2][6] = U'フ';
+        kb->pages[PDKBP_JA_Katakana].rows[3][6] = U'ヘ';
+        kb->pages[PDKBP_JA_Katakana].rows[4][6] = U'ホ';
+
+        kb->pages[PDKBP_JA_Katakana].rows[0][7] = U'マ';
+        kb->pages[PDKBP_JA_Katakana].rows[1][7] = U'ミ';
+        kb->pages[PDKBP_JA_Katakana].rows[2][7] = U'ム';
+        kb->pages[PDKBP_JA_Katakana].rows[3][7] = U'メ';
+        kb->pages[PDKBP_JA_Katakana].rows[4][7] = U'モ';
+
+        kb->pages[PDKBP_JA_Katakana].rows[0][8] = U'ラ';
+        kb->pages[PDKBP_JA_Katakana].rows[1][8] = U'リ';
+        kb->pages[PDKBP_JA_Katakana].rows[2][8] = U'ル';
+        kb->pages[PDKBP_JA_Katakana].rows[3][8] = U'レ';
+        kb->pages[PDKBP_JA_Katakana].rows[4][8] = U'ロ';
+
+        kb->pages[PDKBP_JA_Katakana].rows[0][9] = U'ヤ';
+        kb->pages[PDKBP_JA_Katakana].rows[1][9] = U'ユ';
+        kb->pages[PDKBP_JA_Katakana].rows[2][9] = U'ヨ';
+        kb->pages[PDKBP_JA_Katakana].rows[3][9] = U'ワ';
+        kb->pages[PDKBP_JA_Katakana].rows[4][9] = U'ヲ';
+
+        kb->pages[PDKBP_JA_Katakana].rows[0][10] = KEY_BACKSPACE;
+        kb->pages[PDKBP_JA_Katakana].rows[1][10] = KEY_DAKUTEN;
+        kb->pages[PDKBP_JA_Katakana].rows[2][10] = KEY_HANDAKUTEN;
+        kb->pages[PDKBP_JA_Katakana].rows[3][10] = U'ん';
+        kb->pages[PDKBP_JA_Katakana].rows[4][10] = KEY_CONFIRM;
     }
 
     if (f & PDKBF_JA_HIRAGANA)
@@ -1019,78 +1194,73 @@ PDKeyboard* pdkb_new(PlaydateAPI* _pd, PDKeyboardFlags f, const uint32_t* leftke
         kb->pages[PDKBP_JA_Hiragana].type = PDKBP_JA_Hiragana;
         kb->current_page = PDKBP_JA_Hiragana;
 
-        kb->pages[PDKBP_JA_Hiragana].rows_c = 6;
+        kb->pages[PDKBP_JA_Hiragana].rows_c = 5;
 
         kb->pages[PDKBP_JA_Hiragana].rows[0][0] = ' ';
-        kb->pages[PDKBP_JA_Hiragana].rows[0][1] = 'あ';
-        kb->pages[PDKBP_JA_Hiragana].rows[0][2] = 'か';
-        kb->pages[PDKBP_JA_Hiragana].rows[0][3] = 'さ';
-        kb->pages[PDKBP_JA_Hiragana].rows[0][4] = 'た';
-        kb->pages[PDKBP_JA_Hiragana].rows[0][5] = 'な';
-        kb->pages[PDKBP_JA_Hiragana].rows[0][6] = 'は';
-        kb->pages[PDKBP_JA_Hiragana].rows[0][7] = 'ま';
-        kb->pages[PDKBP_JA_Hiragana].rows[0][8] = 'ら';
-        kb->pages[PDKBP_JA_Hiragana].rows[0][9] = 'や';
-        kb->pages[PDKBP_JA_Hiragana].rows[0][10] = 'わ';
-        kb->pages[PDKBP_JA_Hiragana].rows[0][11] = KEY_FILLER;
+        kb->pages[PDKBP_JA_Hiragana].rows[1][0] = U'、';
+        kb->pages[PDKBP_JA_Hiragana].rows[2][0] = U'。';
+        kb->pages[PDKBP_JA_Hiragana].rows[3][0] = KEY_SHRINK;
+        kb->pages[PDKBP_JA_Hiragana].rows[4][0] = (pagec >= 2) ? KEY_SWITCH : KEY_FILLER;
 
-        kb->pages[PDKBP_JA_Hiragana].rows[1][0] = '、';
-        kb->pages[PDKBP_JA_Hiragana].rows[1][1] = 'い';
-        kb->pages[PDKBP_JA_Hiragana].rows[1][2] = 'き';
-        kb->pages[PDKBP_JA_Hiragana].rows[1][3] = 'し';
-        kb->pages[PDKBP_JA_Hiragana].rows[1][4] = 'ち';
-        kb->pages[PDKBP_JA_Hiragana].rows[1][5] = 'に';
-        kb->pages[PDKBP_JA_Hiragana].rows[1][6] = 'ひ';
-        kb->pages[PDKBP_JA_Hiragana].rows[1][7] = 'み';
-        kb->pages[PDKBP_JA_Hiragana].rows[1][8] = 'り';
-        kb->pages[PDKBP_JA_Hiragana].rows[1][9] = 'ゆ';
-        kb->pages[PDKBP_JA_Hiragana].rows[1][10] = KEY_FILLER;
-        kb->pages[PDKBP_JA_Hiragana].rows[1][11] = KEY_FILLER;
+        kb->pages[PDKBP_JA_Hiragana].rows[0][1] = U'あ';
+        kb->pages[PDKBP_JA_Hiragana].rows[1][1] = U'い';
+        kb->pages[PDKBP_JA_Hiragana].rows[2][1] = U'う';
+        kb->pages[PDKBP_JA_Hiragana].rows[3][1] = U'え';
+        kb->pages[PDKBP_JA_Hiragana].rows[4][1] = U'お';
 
-        kb->pages[PDKBP_JA_Hiragana].rows[2][0] = '。';
-        kb->pages[PDKBP_JA_Hiragana].rows[2][1] = 'う';
-        kb->pages[PDKBP_JA_Hiragana].rows[2][2] = 'く';
-        kb->pages[PDKBP_JA_Hiragana].rows[2][3] = 'す';
-        kb->pages[PDKBP_JA_Hiragana].rows[2][4] = 'つ';
-        kb->pages[PDKBP_JA_Hiragana].rows[2][5] = 'ぬ';
-        kb->pages[PDKBP_JA_Hiragana].rows[2][6] = 'ふ';
-        kb->pages[PDKBP_JA_Hiragana].rows[2][7] = 'む';
-        kb->pages[PDKBP_JA_Hiragana].rows[2][8] = 'る';
-        kb->pages[PDKBP_JA_Hiragana].rows[2][9] = 'よ';
-        kb->pages[PDKBP_JA_Hiragana].rows[2][10] = KEY_FILLER;
-        kb->pages[PDKBP_JA_Hiragana].rows[2][11] = KEY_FILLER;
+        kb->pages[PDKBP_JA_Hiragana].rows[0][2] = U'か';
+        kb->pages[PDKBP_JA_Hiragana].rows[1][2] = U'き';
+        kb->pages[PDKBP_JA_Hiragana].rows[2][2] = U'く';
+        kb->pages[PDKBP_JA_Hiragana].rows[3][2] = U'け';
+        kb->pages[PDKBP_JA_Hiragana].rows[4][2] = U'こ';
 
-        kb->pages[PDKBP_JA_Hiragana].rows[3][0] = KEY_FILLER;
-        kb->pages[PDKBP_JA_Hiragana].rows[3][1] = 'え';
-        kb->pages[PDKBP_JA_Hiragana].rows[3][2] = 'け';
-        kb->pages[PDKBP_JA_Hiragana].rows[3][3] = 'せ';
-        kb->pages[PDKBP_JA_Hiragana].rows[3][4] = 'て';
-        kb->pages[PDKBP_JA_Hiragana].rows[3][5] = 'ね';
-        kb->pages[PDKBP_JA_Hiragana].rows[3][6] = 'へ';
-        kb->pages[PDKBP_JA_Hiragana].rows[3][7] = 'め';
-        kb->pages[PDKBP_JA_Hiragana].rows[3][8] = 'れ';
-        kb->pages[PDKBP_JA_Hiragana].rows[3][9] = KEY_FILLER;
-        kb->pages[PDKBP_JA_Hiragana].rows[3][10] = KEY_FILLER;
-        kb->pages[PDKBP_JA_Hiragana].rows[3][11] = KEY_FILLER;
+        kb->pages[PDKBP_JA_Hiragana].rows[0][3] = U'さ';
+        kb->pages[PDKBP_JA_Hiragana].rows[1][3] = U'し';
+        kb->pages[PDKBP_JA_Hiragana].rows[2][3] = U'す';
+        kb->pages[PDKBP_JA_Hiragana].rows[3][3] = U'せ';
+        kb->pages[PDKBP_JA_Hiragana].rows[4][3] = U'そ';
 
-        kb->pages[PDKBP_JA_Hiragana].rows[4][0] = KEY_FILLER;
-        kb->pages[PDKBP_JA_Hiragana].rows[4][1] = 'お';
-        kb->pages[PDKBP_JA_Hiragana].rows[4][2] = 'こ';
-        kb->pages[PDKBP_JA_Hiragana].rows[4][3] = 'そ';
-        kb->pages[PDKBP_JA_Hiragana].rows[4][4] = 'と';
-        kb->pages[PDKBP_JA_Hiragana].rows[4][5] = 'の';
-        kb->pages[PDKBP_JA_Hiragana].rows[4][6] = 'ほ';
-        kb->pages[PDKBP_JA_Hiragana].rows[4][7] = 'も';
-        kb->pages[PDKBP_JA_Hiragana].rows[4][8] = 'ろ';
-        kb->pages[PDKBP_JA_Hiragana].rows[4][9] = KEY_FILLER;
-        kb->pages[PDKBP_JA_Hiragana].rows[4][10] = 'を';
-        kb->pages[PDKBP_JA_Hiragana].rows[4][11] = 'ん';
+        kb->pages[PDKBP_JA_Hiragana].rows[0][4] = U'た';
+        kb->pages[PDKBP_JA_Hiragana].rows[1][4] = U'ち';
+        kb->pages[PDKBP_JA_Hiragana].rows[2][4] = U'つ';
+        kb->pages[PDKBP_JA_Hiragana].rows[3][4] = U'て';
+        kb->pages[PDKBP_JA_Hiragana].rows[4][4] = U'と';
 
-        kb->pages[PDKBP_JA_Hiragana].rows[5][0] = KEY_DAKUTEN;
-        kb->pages[PDKBP_JA_Hiragana].rows[5][1] = KEY_HANDAKUTEN;
-        kb->pages[PDKBP_JA_Hiragana].rows[5][2] = KEY_BACKSPACE;
-        if (pagec >= 2)
-            kb->pages[PDKBP_JA_Hiragana].rows[5][3] = KEY_SWITCH;
+        kb->pages[PDKBP_JA_Hiragana].rows[0][5] = U'な';
+        kb->pages[PDKBP_JA_Hiragana].rows[1][5] = U'に';
+        kb->pages[PDKBP_JA_Hiragana].rows[2][5] = U'ぬ';
+        kb->pages[PDKBP_JA_Hiragana].rows[3][5] = U'ね';
+        kb->pages[PDKBP_JA_Hiragana].rows[4][5] = U'の';
+
+        kb->pages[PDKBP_JA_Hiragana].rows[0][6] = U'は';
+        kb->pages[PDKBP_JA_Hiragana].rows[1][6] = U'ひ';
+        kb->pages[PDKBP_JA_Hiragana].rows[2][6] = U'ふ';
+        kb->pages[PDKBP_JA_Hiragana].rows[3][6] = U'へ';
+        kb->pages[PDKBP_JA_Hiragana].rows[4][6] = U'ほ';
+
+        kb->pages[PDKBP_JA_Hiragana].rows[0][7] = U'ま';
+        kb->pages[PDKBP_JA_Hiragana].rows[1][7] = U'み';
+        kb->pages[PDKBP_JA_Hiragana].rows[2][7] = U'む';
+        kb->pages[PDKBP_JA_Hiragana].rows[3][7] = U'め';
+        kb->pages[PDKBP_JA_Hiragana].rows[4][7] = U'も';
+
+        kb->pages[PDKBP_JA_Hiragana].rows[0][8] = U'ら';
+        kb->pages[PDKBP_JA_Hiragana].rows[1][8] = U'り';
+        kb->pages[PDKBP_JA_Hiragana].rows[2][8] = U'る';
+        kb->pages[PDKBP_JA_Hiragana].rows[3][8] = U'れ';
+        kb->pages[PDKBP_JA_Hiragana].rows[4][8] = U'ろ';
+
+        kb->pages[PDKBP_JA_Hiragana].rows[0][9] = U'や';
+        kb->pages[PDKBP_JA_Hiragana].rows[1][9] = U'ゆ';
+        kb->pages[PDKBP_JA_Hiragana].rows[2][9] = U'よ';
+        kb->pages[PDKBP_JA_Hiragana].rows[3][9] = U'わ';
+        kb->pages[PDKBP_JA_Hiragana].rows[4][9] = U'を';
+
+        kb->pages[PDKBP_JA_Hiragana].rows[0][10] = KEY_BACKSPACE;
+        kb->pages[PDKBP_JA_Hiragana].rows[1][10] = KEY_DAKUTEN;
+        kb->pages[PDKBP_JA_Hiragana].rows[2][10] = KEY_HANDAKUTEN;
+        kb->pages[PDKBP_JA_Hiragana].rows[3][10] = U'ん';
+        kb->pages[PDKBP_JA_Hiragana].rows[4][10] = KEY_CONFIRM;
     }
 
     if ((f & PDKBF_LATIN_UPPERCASE) || (f & PDKBF_LATIN_LOWERCASE))
@@ -1101,41 +1271,65 @@ PDKeyboard* pdkb_new(PlaydateAPI* _pd, PDKeyboardFlags f, const uint32_t* leftke
         bool punct = !!(kb->flags & PDKBF_LATIN_PUNCTUATION);
         
         kb->pages[PDKBP_Latin].rows_c = 4;
-        kb->pages[PDKBP_Latin].rows[0][0] = 'A';
-        kb->pages[PDKBP_Latin].rows[0][1] = 'B';
-        kb->pages[PDKBP_Latin].rows[0][2] = 'C';
-        kb->pages[PDKBP_Latin].rows[0][3] = 'D';
-        kb->pages[PDKBP_Latin].rows[0][4] = 'E';
-        kb->pages[PDKBP_Latin].rows[0][5] = 'F';
-        kb->pages[PDKBP_Latin].rows[0][6] = 'G';
-        kb->pages[PDKBP_Latin].rows[0][7] = 'H';
+        kb->pages[PDKBP_Latin].rows[0][0] = 'a';
+        kb->pages[PDKBP_Latin].rows[0][1] = 'b';
+        kb->pages[PDKBP_Latin].rows[0][2] = 'c';
+        kb->pages[PDKBP_Latin].rows[0][3] = 'd';
+        kb->pages[PDKBP_Latin].rows[0][4] = 'e';
+        kb->pages[PDKBP_Latin].rows[0][5] = 'f';
+        kb->pages[PDKBP_Latin].rows[0][6] = 'g';
+        kb->pages[PDKBP_Latin].rows[0][7] = 'h';
         kb->pages[PDKBP_Latin].rows[0][8] = KEY_BACKSPACE;
         if (punct) kb->pages[PDKBP_Latin].rows[0][9] = KEY_EXTEND;
-        kb->pages[PDKBP_Latin].rows[1][0] = 'I';
-        kb->pages[PDKBP_Latin].rows[1][1] = 'J';
-        kb->pages[PDKBP_Latin].rows[1][2] = 'K';
-        kb->pages[PDKBP_Latin].rows[1][3] = 'L';
-        kb->pages[PDKBP_Latin].rows[1][4] = 'M';
-        kb->pages[PDKBP_Latin].rows[1][5] = 'N';
-        kb->pages[PDKBP_Latin].rows[1][6] = 'O';
-        kb->pages[PDKBP_Latin].rows[1][7] = 'P';
-        kb->pages[PDKBP_Latin].rows[1][8] = 'Q';
+        kb->pages[PDKBP_Latin].rows[1][0] = 'i';
+        kb->pages[PDKBP_Latin].rows[1][1] = 'j';
+        kb->pages[PDKBP_Latin].rows[1][2] = 'k';
+        kb->pages[PDKBP_Latin].rows[1][3] = 'l';
+        kb->pages[PDKBP_Latin].rows[1][4] = 'm';
+        kb->pages[PDKBP_Latin].rows[1][5] = 'n';
+        kb->pages[PDKBP_Latin].rows[1][6] = 'o';
+        kb->pages[PDKBP_Latin].rows[1][7] = 'p';
+        kb->pages[PDKBP_Latin].rows[1][8] = 'q';
         if (punct) kb->pages[PDKBP_Latin].rows[1][9] = '\'';
-        kb->pages[PDKBP_Latin].rows[2][0] = 'R';
-        kb->pages[PDKBP_Latin].rows[2][1] = 'S';
-        kb->pages[PDKBP_Latin].rows[2][2] = 'T';
-        kb->pages[PDKBP_Latin].rows[2][3] = 'U';
-        kb->pages[PDKBP_Latin].rows[2][4] = 'V';
-        kb->pages[PDKBP_Latin].rows[2][5] = 'W';
-        kb->pages[PDKBP_Latin].rows[2][6] = 'X';
-        kb->pages[PDKBP_Latin].rows[2][7] = 'Y';
-        kb->pages[PDKBP_Latin].rows[2][8] = 'Z';
+        kb->pages[PDKBP_Latin].rows[2][0] = 'r';
+        kb->pages[PDKBP_Latin].rows[2][1] = 's';
+        kb->pages[PDKBP_Latin].rows[2][2] = 't';
+        kb->pages[PDKBP_Latin].rows[2][3] = 'u';
+        kb->pages[PDKBP_Latin].rows[2][4] = 'v';
+        kb->pages[PDKBP_Latin].rows[2][5] = 'w';
+        kb->pages[PDKBP_Latin].rows[2][6] = 'x';
+        kb->pages[PDKBP_Latin].rows[2][7] = 'y';
+        kb->pages[PDKBP_Latin].rows[2][8] = 'z';
         if (punct) kb->pages[PDKBP_Latin].rows[2][9] = '.';
+        
+        if (!(kb->flags & PDKBF_LATIN_LOWERCASE))
+        {
+            for (size_t i = 0; i < MAXROWS; ++i)
+            {
+                for (size_t j = 0; j < MAXROWLEN; ++j)
+                {
+                    kb->pages[PDKBP_Latin].rows[i][j] = 
+                        toupper(kb->pages[PDKBP_Latin].rows[i][j]);
+                }
+            }
+        }
+        else if ((kb->flags & PDKBF_START_UPPERCASE) == PDKBF_START_UPPERCASE)
+        {
+            kb->altstate = 1;
+        }
         
         size_t ki = 0;
         if (pagec >= 2)
         {
             kb->pages[PDKBP_Latin].rows[3][ki++] = KEY_SWITCH;
+        }
+        
+        const bool has_upper = (kb->flags & (PDKBF_LATIN_UPPERCASE | PDKBF_LATIN_LOWERCASE))
+            == (PDKBF_LATIN_UPPERCASE | PDKBF_LATIN_LOWERCASE);
+        
+        if (has_upper)
+        {
+            kb->pages[PDKBP_Latin].rows[3][ki++] = KEY_UPPER;
         }
         
         for (const uint32_t* kv = leftkeys; kv && *kv; ++kv)
@@ -1147,7 +1341,10 @@ PDKeyboard* pdkb_new(PlaydateAPI* _pd, PDKeyboardFlags f, const uint32_t* leftke
         kb->pages[PDKBP_Latin].rows[3][ki++] = KEY_EXTEND;
         kb->pages[PDKBP_Latin].rows[3][ki++] = KEY_EXTEND;
         kb->pages[PDKBP_Latin].rows[3][ki++] = KEY_EXTEND;
-        kb->pages[PDKBP_Latin].rows[3][ki++] = KEY_EXTEND;
+        if (!leftkeys)
+            kb->pages[PDKBP_Latin].rows[3][ki++] = KEY_EXTEND;
+        if (!rightkeys)
+            kb->pages[PDKBP_Latin].rows[3][ki++] = KEY_EXTEND;
         
         for (const uint32_t* kv = rightkeys; kv && *kv; ++kv)
         {
@@ -1156,7 +1353,11 @@ PDKeyboard* pdkb_new(PlaydateAPI* _pd, PDKeyboardFlags f, const uint32_t* leftke
         
         if (kb->flags & PDKBF_CONFIRM)
         {
-            kb->pages[PDKBP_Latin].rows[3][6] = KEY_CONFIRM;
+            kb->pages[PDKBP_Latin].rows[3][ki++] = KEY_CONFIRM;
+            if (has_upper)
+            {
+                kb->pages[PDKBP_Latin].rows[3][ki++] = KEY_EXTEND;
+            }
         }
     }
 
@@ -1292,7 +1493,7 @@ float pdkb_get_open_p(const PDKeyboard* kb)
 
 int pdkb_get_visible_y(const PDKeyboard* kb)
 {
-    float p = 1.0 - (1.0 - kb->open_p) * (1.0 - kb->open_p);
+    float p = 1.0f - (1.0f - kb->open_p) * (1.0f - kb->open_p);
     return (int)(120 + 120 * (1.0f - p));
 }
 
@@ -1302,5 +1503,10 @@ unsigned pdkb_get_hovered(const PDKeyboard* kb)
     if (page->type == PDKBP_None) return 0;
     uint32_t key = _pdkb_count_row_get_key(page, kb->sel_row, kb->sel_idx);
     if (key < 0x20) return 0;
+    if (kb->altstate)
+    {
+        key = _pdkb_apply_sutegana(key);
+        key = toupper(key);
+    }
     return (unsigned)key;
 }

@@ -20,6 +20,9 @@ enum PDKeyboardFlags {
 
     /* user can cancel out (closes keyboard) */
     PDKBF_CANCEL = 0x2000,
+    
+    /* Start in uppercase */
+    PDKBF_START_UPPERCASE = 0x4001,
 
     /* Audio feedback */
     PDKBF_SOUND = 0x8000,
@@ -28,11 +31,11 @@ enum PDKeyboardFlags {
     PDKBF_LATIN_UPPERCASE = 1, /* allow entering uppercase latin alphabet (A-Z) */
     PDKBF_LATIN_LOWERCASE = 2, /* allow entering lowercase latin alphabet (a-z) */
     PDKBF_SPACE = 4, /* allow spaces */
-    PDKBF_LATIN_PUNCTUATION = 8, /* allow common punctuation  !?,.-_:;/'"() */
+    PDKBF_LATIN_PUNCTUATION = 8, /* allow common punctuation  !?,.-_:;/'" */
 
-    PDKBF_NUMERIC = 0x40, /* allow numbers 0-9 */
-    PDKBF_SYMBOLS = 0xB8, /* allow various special symbols @#$%^&*{}[]+~<> (including punctuation) */
-
+    PDKBF_NUMERIC = 0x10, /* allow numbers 0-9 */
+    PDKBF_SYMBOLS = 0x28, /* allow various special symbols @#$%^&*{}[]+~<> (including punctuation) */
+    
     /* The following are ignored if the encoding scheme is set to ASCII. */
     PDKBF_JA_HIRAGANA = 0x10000,
     PDKBF_JA_KATAKANA = 0x20000,
@@ -42,7 +45,7 @@ enum PDKeyboardFlags {
     PDKBF_DEFAULT
         = PDKBF_CONFIRM | PDKBF_CANCEL
         | PDKBF_SOUND
-        | PDKBF_LATIN_UPPERCASE | PDKBF_LATIN_LOWERCASE
+        | PDKBF_START_UPPERCASE | PDKBF_LATIN_LOWERCASE
         | PDKBF_SPACE | PDKBF_NUMERIC
         | PDKBF_SYMBOLS
         | PDKBF_JA_ALL
