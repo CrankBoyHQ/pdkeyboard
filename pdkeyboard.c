@@ -1525,7 +1525,7 @@ PDKeyboard* pdkb_new(PlaydateAPI* _pd, PDKeyboardFlags f, const uint32_t* leftke
         kb->pages[PDKBP_JA_Katakana].rows[0][10] = KEY_BACKSPACE;
         kb->pages[PDKBP_JA_Katakana].rows[1][10] = KEY_DAKUTEN;
         kb->pages[PDKBP_JA_Katakana].rows[2][10] = KEY_HANDAKUTEN;
-        kb->pages[PDKBP_JA_Hiragana].rows[3][10] = U'ン';
+        kb->pages[PDKBP_JA_Katakana].rows[3][10] = U'ン';
         kb->pages[PDKBP_JA_Katakana].rows[4][10] = KEY_CONFIRM;
     }
 
@@ -1599,7 +1599,7 @@ PDKeyboard* pdkb_new(PlaydateAPI* _pd, PDKeyboardFlags f, const uint32_t* leftke
         kb->pages[PDKBP_JA_Hiragana].rows[0][10] = KEY_BACKSPACE;
         kb->pages[PDKBP_JA_Hiragana].rows[1][10] = KEY_DAKUTEN;
         kb->pages[PDKBP_JA_Hiragana].rows[2][10] = KEY_HANDAKUTEN;
-        kb->pages[PDKBP_JA_Katakana].rows[3][10] = U'ん'
+        kb->pages[PDKBP_JA_Hiragana].rows[3][10] = U'ん';
         kb->pages[PDKBP_JA_Hiragana].rows[4][10] = KEY_CONFIRM;
     }
 
@@ -1707,6 +1707,7 @@ PDKeyboard* pdkb_new(PlaydateAPI* _pd, PDKeyboardFlags f, const uint32_t* leftke
             for (size_t j = 0; j < MAXROWLEN; ++j)
             {
                 uint32_t key = page->rows[i][j];
+                if (!key) continue;
 
                 if ((key >= 'a' && key <= 'z') || (key >= 'A' && key <= 'Z'))
                 {
@@ -1728,16 +1729,19 @@ PDKeyboard* pdkb_new(PlaydateAPI* _pd, PDKeyboardFlags f, const uint32_t* leftke
                 )
                 {
                     uint32_t key2 = _pdkb_swap_kana(key);
-                    _pdkb_lp_append(page, i, j, key2);
-                    
-                    key_sg = _pdkb_apply_sutegana(key2);
-                    if (key_sg != key2) _pdkb_lp_append(page, i, j, key_sg);
-                    
-                    key_sg = _pdkb_apply_dakuten(key2, false);
-                    if (key_sg != key2) _pdkb_lp_append(page, i, j, key_sg);
-                    
-                    key_sg = _pdkb_apply_dakuten(key2, true);
-                    if (key_sg != key2) _pdkb_lp_append(page, i, j, key_sg);
+                    if (key2 != key)
+                    {
+                        _pdkb_lp_append(page, i, j, key2);
+
+                        key_sg = _pdkb_apply_sutegana(key2);
+                        if (key_sg != key2) _pdkb_lp_append(page, i, j, key_sg);
+
+                        key_sg = _pdkb_apply_dakuten(key2, false);
+                        if (key_sg != key2) _pdkb_lp_append(page, i, j, key_sg);
+
+                        key_sg = _pdkb_apply_dakuten(key2, true);
+                        if (key_sg != key2) _pdkb_lp_append(page, i, j, key_sg);
+                    }
                 }
                     
                 switch(key)
@@ -1878,6 +1882,12 @@ PDKeyboard* pdkb_new(PlaydateAPI* _pd, PDKeyboardFlags f, const uint32_t* leftke
 void pdkb_free(PDKeyboard* kb)
 {
     if (!kb) return;
+    
+    if (kb->is_open)
+    {
+        pd->system->logToConsole("pdkb:free-unclosed");
+        pd->system->logToConsole("pdkb:close");
+    }
 
     for (size_t p = 0; p < PDKBP_COUNT; ++p)
     {
@@ -1976,6 +1986,11 @@ void pdkb_set_openclose_duration(PDKeyboard* kb, float s)
 
 void pdkb_open(PDKeyboard* kb)
 {
+    if (!kb->is_open)
+    {
+        pd->system->logToConsole("pdkb:open");
+    }
+    
     kb->is_open = true;
     if (kb->animation_duration <= 0.0f)
     {
@@ -1985,6 +2000,11 @@ void pdkb_open(PDKeyboard* kb)
 
 void pdkb_close(PDKeyboard* kb)
 {
+    if (kb->is_open)
+    {
+        pd->system->logToConsole("pdkb:close");
+    }
+    
     kb->is_open = false;
     if (kb->animation_duration <= 0.0f)
     {
