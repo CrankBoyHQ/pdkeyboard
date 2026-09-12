@@ -162,7 +162,7 @@ enum PDKBPageType {
 #define KEY_SHRINK 9
 
 #define LONGPRESS_TIME (0.35f)
-#define DAS_ONSET_TIME (0.2f)
+#define DAS_ONSET_TIME (0.32f)
 #define DAS_INTERVAL (0.05f)
 
 typedef struct PDKeyboardPage {
@@ -1163,7 +1163,30 @@ void pdkb_update(PDKeyboard* kb, float dt)
     
     int dx = !!(pushed & kButtonRight) - !!(pushed & kButtonLeft);
     int dy = !!(pushed & kButtonDown) - !!(pushed & kButtonUp);
-    
+
+    int hx = !!(down & kButtonRight) - !!(down & kButtonLeft);
+    int hy = !!(down & kButtonDown) - !!(down & kButtonUp);
+
+    if (dx != 0 || dy != 0)
+    {
+        // a fresh press restarts the delay
+        kb->das_t = 0;
+    }
+    else if (hx != 0 || hy != 0)
+    {
+        kb->das_t += dt;
+        if (kb->das_t >= DAS_ONSET_TIME)
+        {
+            kb->das_t -= DAS_INTERVAL;
+            dx = hx;
+            dy = hy;
+        }
+    }
+    else
+    {
+        kb->das_t = 0;
+    }
+
     if (kb->longpress_menu_idx >= 0)
     {        
         if (released & kButtonA)
@@ -1289,7 +1312,7 @@ void pdkb_update(PDKeyboard* kb, float dt)
         if ((released & kButtonB) && (kb->flags & PDKBF_CANCEL))
         {
             kb->result = -1;
-            kb->is_open = false;
+            pdkb_close(kb);
             return;
         }
         
