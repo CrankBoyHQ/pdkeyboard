@@ -28,9 +28,7 @@ enum PDKeyboardFlags {
     PDKBF_LATIN_UPPERCASE = 1, /* allow entering uppercase latin alphabet (A-Z) */
     PDKBF_LATIN_LOWERCASE = 2, /* allow entering lowercase latin alphabet (a-z) */
     PDKBF_SPACE = 4, /* allow spaces */
-    PDKBF_UNDERSCORE = 8, /* allow underscore */
-    PDKBF_HYPHEN = 0x10, /* allow - */
-    PDKBF_LATIN_PUNCTUATION = 0x38, /* allow common punctuation  !?,.-_:;/'"() (including hyphen and underscore) */
+    PDKBF_LATIN_PUNCTUATION = 8, /* allow common punctuation  !?,.-_:;/'"() */
 
     PDKBF_NUMERIC = 0x40, /* allow numbers 0-9 */
     PDKBF_SYMBOLS = 0xB8, /* allow various special symbols @#$%^&*{}[]+~<> (including punctuation) */
@@ -56,12 +54,16 @@ typedef enum PDKeyboardFlags PDKeyboardFlags;
  * 
  * Afterward, you can use pdkb_open() and pdkb_close() to show/hide it.
  * 
- * The same keyboard can be used on different text entry fields.
+ * The same keyboard can be used on different text entry fields,
+ * unless the configuration changes (different flags, etc.).
  * 
  * While the keyboard exists, invoke pdkb_update(kb) once per frame,
  * even if the keyboard has been closed.
+ *
+ * special_*keys: optional NULL-terminated list of extra keys to add to the right/left of the space bar.
+ * (Only for latin keyboard.)
 */
-PDKeyboard* pdkb_new(PlaydateAPI* pd, PDKeyboardFlags);
+PDKeyboard* pdkb_new(PlaydateAPI* pd, PDKeyboardFlags, const uint32_t* special_leftkeys, const uint32_t* special_rightkeys);
 
 /* Delete keyboard. Cleans up resources. */
 void pdkb_free(PDKeyboard* kb);

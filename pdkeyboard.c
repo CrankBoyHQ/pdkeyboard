@@ -51,6 +51,24 @@ static unsigned switch_width = 16;
 static unsigned switch_height = 16;
 static LCDBitmap* switch_img;
 
+static unsigned char dakuten_data[] = {
+    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+    0xFE, 0x1F, 0xFF, 0x9F, 0xF8, 0xFF, 0xFC, 0xFF,
+    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
+};
+static unsigned dakuten_width = 16;
+static unsigned dakuten_height = 16;
+
+static unsigned char handakuten_data[] = {
+    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFE, 0x3F,
+    0xFC, 0x9F, 0xFD, 0xDF, 0xFC, 0x9F, 0xFE, 0x3F,
+    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
+};
+static unsigned handakuten_width = 16;
+static unsigned handakuten_height = 16;
+
 static LCDBitmap* _pdkb_load_image(const uint8_t* data, int width, int height)
 {
     LCDBitmap* bm = pd->graphics->newBitmap(width, height, kColorBlack);
@@ -84,13 +102,15 @@ enum PDKBPageType {
     PDKBP_COUNT
 };
 
-#define MAXROWS 4
+#define MAXROWS 6
 #define MAXROWLEN 40
 
 #define KEY_FILLER 1
 #define KEY_SWITCH 2
 #define KEY_EXTEND 3
 #define KEY_CONFIRM 4
+#define KEY_DAKUTEN 5
+#define KEY_HANDAKUTEN 6
 #define KEY_BACKSPACE 8
 
 typedef struct PDKeyboardPage {
@@ -672,13 +692,14 @@ void pdkb_update(PDKeyboard* kb, float dt)
     }
 }
 
-PDKeyboard* pdkb_new(PlaydateAPI* _pd, PDKeyboardFlags f)
+PDKeyboard* pdkb_new(PlaydateAPI* _pd, PDKeyboardFlags f, const uint32_t* leftkeys, const uint32_t* rightkeys)
 {
     pd = _pd;
 
     PDKeyboard* kb = _pd->system->realloc(NULL, sizeof(PDKeyboard));
 
     if (!kb) return NULL;
+
 
     memset(kb, 0, sizeof(PDKeyboard));
     kb->flags = f;
@@ -687,6 +708,13 @@ PDKeyboard* pdkb_new(PlaydateAPI* _pd, PDKeyboardFlags f)
     int pagec = !!(f&(PDKBF_LATIN_LOWERCASE | PDKBF_LATIN_UPPERCASE))
         +  !!(f & PDKBF_SYMBOLS) + !!(f & PDKBF_NUMERIC)
         + !!(f & PDKBF_JA_HIRAGANA) + !!(f & PDKBF_JA_KATAKANA);
+        
+    int spacekey = ' ';
+    if (!(kb->flags & PDKBF_SPACE))
+    {
+        spacekey = KEY_FILLER;
+    }
+    
 
     if (f & PDKBF_SYMBOLS)
     {
@@ -698,6 +726,8 @@ PDKeyboard* pdkb_new(PlaydateAPI* _pd, PDKeyboardFlags f)
     {
         kb->pages[PDKBP_Numeric].type = PDKBP_Numeric;
         kb->current_page = PDKBP_Numeric;
+        
+        // TODO: 3x3 9-1 grid, with 0 at bottom plus space dot and hyphen if allowed.
     }
 
     if (f & PDKBF_JA_KATAKANA)
@@ -717,6 +747,8 @@ PDKeyboard* pdkb_new(PlaydateAPI* _pd, PDKeyboardFlags f)
         kb->pages[PDKBP_Latin].type = PDKBP_Latin;
         kb->current_page = PDKBP_Latin;
         
+        bool punct = !!(kb->flags & PDKBF_LATIN_PUNCTUATION);
+        
         kb->pages[PDKBP_Latin].rows_c = 4;
         kb->pages[PDKBP_Latin].rows[0][0] = 'A';
         kb->pages[PDKBP_Latin].rows[0][1] = 'B';
@@ -727,6 +759,7 @@ PDKeyboard* pdkb_new(PlaydateAPI* _pd, PDKeyboardFlags f)
         kb->pages[PDKBP_Latin].rows[0][6] = 'G';
         kb->pages[PDKBP_Latin].rows[0][7] = 'H';
         kb->pages[PDKBP_Latin].rows[0][8] = KEY_BACKSPACE;
+        if (punct) kb->pages[PDKBP_Latin].rows[0][9] = KEY_EXTEND;
         kb->pages[PDKBP_Latin].rows[1][0] = 'I';
         kb->pages[PDKBP_Latin].rows[1][1] = 'J';
         kb->pages[PDKBP_Latin].rows[1][2] = 'K';
@@ -736,6 +769,7 @@ PDKeyboard* pdkb_new(PlaydateAPI* _pd, PDKeyboardFlags f)
         kb->pages[PDKBP_Latin].rows[1][6] = 'O';
         kb->pages[PDKBP_Latin].rows[1][7] = 'P';
         kb->pages[PDKBP_Latin].rows[1][8] = 'Q';
+        if (punct) kb->pages[PDKBP_Latin].rows[1][9] = '\'';
         kb->pages[PDKBP_Latin].rows[2][0] = 'R';
         kb->pages[PDKBP_Latin].rows[2][1] = 'S';
         kb->pages[PDKBP_Latin].rows[2][2] = 'T';
@@ -745,15 +779,30 @@ PDKeyboard* pdkb_new(PlaydateAPI* _pd, PDKeyboardFlags f)
         kb->pages[PDKBP_Latin].rows[2][6] = 'X';
         kb->pages[PDKBP_Latin].rows[2][7] = 'Y';
         kb->pages[PDKBP_Latin].rows[2][8] = 'Z';
+        if (punct) kb->pages[PDKBP_Latin].rows[2][9] = '.';
+        
+        size_t ki = 0;
         if (pagec >= 2)
         {
-            kb->pages[PDKBP_Latin].rows[3][0] = KEY_SWITCH;
+            kb->pages[PDKBP_Latin].rows[3][ki++] = KEY_SWITCH;
         }
-        kb->pages[PDKBP_Latin].rows[3][1] = (kb->flags & PDKBF_SPACE) ? ' ' : KEY_FILLER;
-        kb->pages[PDKBP_Latin].rows[3][2] = KEY_EXTEND;
-        kb->pages[PDKBP_Latin].rows[3][3] = KEY_EXTEND;
-        kb->pages[PDKBP_Latin].rows[3][4] = KEY_EXTEND;
-        kb->pages[PDKBP_Latin].rows[3][5] = KEY_EXTEND;
+        
+        for (const uint32_t* kv = leftkeys; kv && *kv; ++kv)
+        {
+            kb->pages[PDKBP_Latin].rows[3][ki++] = *kv;
+        }
+        
+        kb->pages[PDKBP_Latin].rows[3][ki++] = spacekey;
+        kb->pages[PDKBP_Latin].rows[3][ki++] = KEY_EXTEND;
+        kb->pages[PDKBP_Latin].rows[3][ki++] = KEY_EXTEND;
+        kb->pages[PDKBP_Latin].rows[3][ki++] = KEY_EXTEND;
+        kb->pages[PDKBP_Latin].rows[3][ki++] = KEY_EXTEND;
+        
+        for (const uint32_t* kv = rightkeys; kv && *kv; ++kv)
+        {
+            kb->pages[PDKBP_Latin].rows[3][ki++] = *kv;
+        }
+        
         if (kb->flags & PDKBF_CONFIRM)
         {
             kb->pages[PDKBP_Latin].rows[3][6] = KEY_CONFIRM;
