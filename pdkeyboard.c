@@ -560,11 +560,13 @@ static uint32_t _pdkb_apply_sutegana(uint32_t c)
     {
     case U'あ': return U'ぁ'; case U'い': return U'ぃ'; case U'う': return U'ぅ';
     case U'え': return U'ぇ'; case U'お': return U'ぉ';
+    case U'か': return U'ゕ'; case U'け': return U'ゖ';
     case U'つ': return U'っ';
     case U'や': return U'ゃ'; case U'ゆ': return U'ゅ'; case U'よ': return U'ょ';
 
     case U'ア': return U'ァ'; case U'イ': return U'ィ'; case U'ウ': return U'ゥ';
     case U'エ': return U'ェ'; case U'オ': return U'ォ';
+    case U'カ': return U'ヵ'; case U'ケ': return U'ヶ';
     case U'ツ': return U'ッ';
     case U'ヤ': return U'ャ'; case U'ユ': return U'ュ'; case U'ヨ': return U'ョ';
     default: return c;
@@ -610,10 +612,21 @@ static uint32_t _pdkb_apply_dakuten(uint32_t c, bool is_handakuten)
         case U'テ': return U'デ'; case U'ト': return U'ド';
         case U'ハ': return U'バ'; case U'ヒ': return U'ビ'; case U'フ': return U'ブ';
         case U'ヘ': return U'ベ'; case U'ホ': return U'ボ';
-        case U'ウ': return U'ヴ'; case U'ワ': return U'ヷ';
+        case U'ウ': return U'ヴ'; case U'ワ': return U'ヷ'; case U'ヲ': return U'ヺ';
+        case U'ヰ': return U'ヸ'; case U'ヱ': return U'ヹ';
+        case U'ゝ': return U'ゞ';
+        case U'ヽ': return U'ヾ';
         default: return c;
         }
     }
+}
+
+static uint32_t _pdkb_swap_kana(uint32_t c)
+{
+    if (c >= U'ぁ' && c <= U'ゖ') return c + 0x60;
+    if (c >= U'ァ' && c <= U'ヶ') return c - 0x60;
+    
+    return c;
 }
 
 static LCDBitmap* _pdkb_key_image(PDKeyboard* kb, uint32_t key)
@@ -898,7 +911,7 @@ static void _pdkb_draw(PDKeyboard* kb)
             bool sel = i == kb->sel_row && j == kb->sel_idx;
             if (key != KEY_FILLER)
             {
-                _pdkb_draw_key(kb, key, kx, ky, (int)(kw * jw), row_h, sel, sel && kb->sel_down && kb->longpress_menu_idx < 0);
+                _pdkb_draw_key(kb, key, kx, ky, (int)(kw * jw), row_h, sel, sel && kb->sel_down && (kb->longpress_t >= 0 || kb->longpress_menu_idx >= 0));
             }
             j += jw;
             kx += kw * jw;
@@ -920,6 +933,11 @@ static void _pdkb_draw(PDKeyboard* kb)
 
         size_t count = _len(lp);
         int lw = 18;
+        if (kb->current_page == PDKBP_JA_Katakana || kb->current_page == PDKBP_JA_Hiragana)
+        {
+            // kana need a bit more width :s ugly hack sorry
+            lw += 5;
+        }
         int lh = 24;
         int lm = 0;
         int tt = 6;
@@ -1121,8 +1139,14 @@ void pdkb_update(PDKeyboard* kb, float dt)
     
     kb->sel_down = (down & kButtonA);
     
+    bool release_longpress = false;
+    
     if (!kb->sel_down)
     {
+        if (kb->longpress_t < 0)
+        {
+            release_longpress = true;
+        }
         kb->longpress_t = 0;
     }
     else if (kb->longpress_menu_idx < 0 && kb->longpress_t >= 0)
@@ -1270,7 +1294,7 @@ void pdkb_update(PDKeyboard* kb, float dt)
         }
         
         // typing
-        if (released & kButtonA && kb->open_p == 1)
+        if (released & kButtonA && kb->open_p == 1 && (!release_longpress))
         {
             uint32_t key = _pdkb_count_row_get_key(page, kb->sel_row, kb->sel_idx);
 
@@ -1575,7 +1599,7 @@ PDKeyboard* pdkb_new(PlaydateAPI* _pd, PDKeyboardFlags f, const uint32_t* leftke
         kb->pages[PDKBP_JA_Hiragana].rows[0][10] = KEY_BACKSPACE;
         kb->pages[PDKBP_JA_Hiragana].rows[1][10] = KEY_DAKUTEN;
         kb->pages[PDKBP_JA_Hiragana].rows[2][10] = KEY_HANDAKUTEN;
-        kb->pages[PDKBP_JA_Hiragana].rows[3][10] = U'ん';
+        kb->pages[PDKBP_JA_Hiragana].rows[3][10] = U'ン';
         kb->pages[PDKBP_JA_Hiragana].rows[4][10] = KEY_CONFIRM;
     }
 
@@ -1690,6 +1714,32 @@ PDKeyboard* pdkb_new(PlaydateAPI* _pd, PDKeyboardFlags f, const uint32_t* leftke
                         _pdkb_lp_append(page, i, j, KEY_UPPER);
                 }
                 
+                uint32_t key_sg = _pdkb_apply_sutegana(key);
+                if (key_sg != key) _pdkb_lp_append(page, i, j, key_sg);
+                
+                key_sg = _pdkb_apply_dakuten(key, false);
+                if (key_sg != key) _pdkb_lp_append(page, i, j, key_sg);
+                
+                key_sg = _pdkb_apply_dakuten(key, true);
+                if (key_sg != key) _pdkb_lp_append(page, i, j, key_sg);
+                
+                if ((page->type == PDKBP_JA_Hiragana && (f & PDKBF_JA_KATAKANA))
+                    || (page->type == PDKBP_JA_Katakana && (f & PDKBF_JA_HIRAGANA))
+                )
+                {
+                    uint32_t key2 = _pdkb_swap_kana(key);
+                    _pdkb_lp_append(page, i, j, key2);
+                    
+                    key_sg = _pdkb_apply_sutegana(key2);
+                    if (key_sg != key2) _pdkb_lp_append(page, i, j, key_sg);
+                    
+                    key_sg = _pdkb_apply_dakuten(key2, false);
+                    if (key_sg != key2) _pdkb_lp_append(page, i, j, key_sg);
+                    
+                    key_sg = _pdkb_apply_dakuten(key2, true);
+                    if (key_sg != key2) _pdkb_lp_append(page, i, j, key_sg);
+                }
+                    
                 switch(key)
                 {
                 case ' ':
@@ -1716,6 +1766,23 @@ PDKeyboard* pdkb_new(PlaydateAPI* _pd, PDKeyboardFlags f, const uint32_t* leftke
                         _pdkb_lp_append(page, i, j, ';');
                     }
                     break;
+                case U'、':
+                    _pdkb_lp_append(page, i, j, U'ゝ');
+                    _pdkb_lp_append(page, i, j, U'ゞ');
+                    break;
+                case U'ー':
+                    _pdkb_lp_append(page, i, j, U'ヽ');
+                    _pdkb_lp_append(page, i, j, U'ヾ');
+                    break;
+                case U'・':
+                    _pdkb_lp_append(page, i, j, U'゠');
+                    break;
+                case U'コ':
+                    _pdkb_lp_append(page, i, j, U'ヿ');
+                    break;
+                case U'よ':
+                    _pdkb_lp_append(page, i, j, U'ゟ');
+                    break;
                 case '\'':
                     if (f & PDKBF_LATIN_PUNCTUATION)
                     {
@@ -1729,21 +1796,42 @@ PDKeyboard* pdkb_new(PlaydateAPI* _pd, PDKeyboardFlags f, const uint32_t* leftke
                         _pdkb_lp_append(page, i, j, '`');
                     }
                     break;
+                case U'い':
+                    _pdkb_lp_append(page, i, j, U'ゐ');
+                    if (f & PDKBF_JA_KATAKANA)
+                    {
+                        _pdkb_lp_append(page, i, j, U'ヰ');
+                        _pdkb_lp_append(page, i, j, U'ヸ');
+                    }
+                    break;
+                case U'え':
+                    _pdkb_lp_append(page, i, j, U'ゑ');
+                    if (f & PDKBF_JA_KATAKANA)
+                    {
+                        _pdkb_lp_append(page, i, j, U'ヰ');
+                        _pdkb_lp_append(page, i, j, U'ヸ');
+                    }
+                    break;
+                case U'イ':
+                    _pdkb_lp_append(page, i, j, U'ヰ');
+                    _pdkb_lp_append(page, i, j, U'ヸ');
+                    if (f & PDKBF_JA_HIRAGANA)
+                    {
+                        _pdkb_lp_append(page, i, j, U'ゐ');
+                         	
+                    }
+                    break;
+                case U'エ':
+                    _pdkb_lp_append(page, i, j, U'ヱ');
+                    _pdkb_lp_append(page, i, j, U'ヹ');
+                    if (f & PDKBF_JA_HIRAGANA)
+                    {
+                        _pdkb_lp_append(page, i, j, U'ゑ');
+                    }
+                    break;
                 default:
                     break;
                 }
-                
-                uint32_t key_sg = _pdkb_apply_sutegana(key);
-                if (key_sg != key) _pdkb_lp_append(page, i, j, key_sg);
-                
-                key_sg = _pdkb_apply_dakuten(key, false);
-                if (key_sg != key) _pdkb_lp_append(page, i, j, key_sg);
-                
-                key_sg = _pdkb_apply_dakuten(key, true);
-                if (key_sg != key) _pdkb_lp_append(page, i, j, key_sg);
-                
-                // TODO: also add katakana/hiragana variations
-                // (note: recompute dakuten/sutegana for that variation.)
             }
         }
     }
