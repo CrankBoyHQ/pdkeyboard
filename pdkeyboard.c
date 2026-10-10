@@ -188,7 +188,7 @@ typedef struct PDKeyboard {
     size_t current_page;
     float open_p;
     float animation_duration;
-    
+
     size_t sel_row;
     size_t sel_idx;
     bool sel_down;
@@ -202,8 +202,12 @@ typedef struct PDKeyboard {
 
     bool is_jp_region;
     int shake;
-    
+
     const LCDFont* user_font;
+
+    /* optional audio feedback - silent when unset (see PDKBSoundEvent) */
+    void (*sound_cb)(int event, void* userdata);
+    void* sound_userdata;
 } PDKeyboard;
 
 static size_t _codepoint_next(const char* s, size_t offset, PDStringEncoding encoding);
@@ -211,13 +215,14 @@ static size_t _codepoint_prev(const char* s, size_t offset, PDStringEncoding enc
 static uint32_t _pdkb_apply_dakuten(uint32_t c, bool is_handakuten);
 static void _pdkb_draw_key(PDKeyboard* kb, uint32_t key, int kx, int ky, int kw, int kh, bool selected, bool down);
 static void _pdkb_type(PDKeyboard* kb, uint32_t key);
+static void _pdkb_play_sound(PDKeyboard* kb, PDKBSoundEvent event);
 static LCDFont* _pdkb_get_font(void);
 static LCDFont* _pdkb_font_for(PDKeyboard* kb, uint32_t c);
 
 static size_t _len(uint32_t* l)
 {
     if (!l) return 0;
-    
+
     size_t n = 0;
     while (true)
     {
@@ -229,19 +234,19 @@ static size_t _len(uint32_t* l)
 uint32_t* _append(uint32_t* l, uint32_t v)
 {
     size_t len = _len(l);
-    
+
     uint32_t* l2 = pd->system->realloc(NULL, (len+2)*sizeof(uint32_t));
     if (!l2) return l;
-    
+
     for (size_t i = 0; i < len; ++i)
     {
         l2[i] = l[i];
     }
     l2[len] = v;
     l2[len+1] = 0;
-    
+
     if (l) pd->system->realloc(l, 0);
-    
+
     return l2;
 }
 
@@ -270,7 +275,7 @@ static uint32_t _pdkb_apply_altstate(uint32_t key)
 {
     uint32_t alt = _pdkb_apply_sutegana(key);
     if (alt != key) return alt;
-    
+
     if (key < 0x80) return (uint32_t)toupper((int)key);
 
     return key;
@@ -625,7 +630,7 @@ static uint32_t _pdkb_swap_kana(uint32_t c)
 {
     if (c >= U'ぁ' && c <= U'ゖ') return c + 0x60;
     if (c >= U'ァ' && c <= U'ヶ') return c - 0x60;
-    
+
     return c;
 }
 
@@ -713,9 +718,9 @@ static void _pdkb_draw_key(PDKeyboard* kb, uint32_t key, int kx, int ky, int kw,
         // standard unicode
         char buff[5];
         memset(buff, 0, sizeof(buff));
-        
+
         uint32_t orgkey = key;
-        
+
         if (kb->altstate)
         {
             key = _pdkb_apply_altstate(key);
@@ -728,7 +733,7 @@ static void _pdkb_draw_key(PDKeyboard* kb, uint32_t key, int kx, int ky, int kw,
         int textwidth = pd->graphics->getTextWidth(f, buff, 1, kUTF8Encoding, 0);
         pd->graphics->drawText(buff, 1, kUTF8Encoding, kx + kw/2 - textwidth/2, ky + kh/2-7);
     }
-    
+
     if (selected)
     {
         pd->graphics->fillRoundRect(kx, ky, kw, kh, r, kColorXOR);
@@ -771,7 +776,7 @@ static uint32_t _pdkb_get_real_longpress_key(PDKeyboard* kb, uint32_t lp, uint32
         else
             lp = basekey;
     }
-    
+
     if (lp == KEY_SHRINK)
     {
         if (!kb->altstate)
@@ -779,19 +784,19 @@ static uint32_t _pdkb_get_real_longpress_key(PDKeyboard* kb, uint32_t lp, uint32
         else
             lp = basekey;
     }
-    
+
     if (lp == KEY_DAKUTEN)
     {
         lp = _pdkb_apply_dakuten(basekey, false);
     }
-    
+
     if (lp == KEY_HANDAKUTEN)
     {
         lp = _pdkb_apply_dakuten(basekey, true);
     }
-    
+
     if (lp < 0x20) return basekey;
-    
+
     return lp;
 }
 
@@ -849,7 +854,7 @@ int pdkb_on_serial(PDKeyboard* kb, const char* c)
     {
         return 0;
     }
-    
+
     // "pdkb:<codepoint in decimal>"
     const char* num = c + 5;
     char* end = NULL;
@@ -869,6 +874,7 @@ int pdkb_on_serial(PDKeyboard* kb, const char* c)
         else
         {
             kb->shake = 10;
+            _pdkb_play_sound(kb, kPDKBSoundDenial);
         }
     }
 
@@ -944,7 +950,7 @@ static void _pdkb_draw(PDKeyboard* kb)
 
         int lx = kx - count*lw/2;
         int ly = ky - lh - lm;
-        
+
         if (lx < 0) lx = 0;
         if (lx + lw*count >= LCD_COLUMNS) lx = LCD_COLUMNS - lw*count;
 
@@ -953,7 +959,7 @@ static void _pdkb_draw(PDKeyboard* kb)
         pd->graphics->fillRoundRect(lx, ly, lw * count, lh, r, kColorWhite);
         pd->graphics->drawRoundRect(lx, ly, lw * count, lh, r, 2, kColorBlack);
         pd->graphics->fillTriangle(kx - tt - 4, ly + lh - 4, kx + tt + 4, ly + lh - 4, kx, ly + lh + tt, kColorWhite);
-        
+
         for (size_t i = 0; i < count; ++i)
         {
             uint32_t key = _pdkb_get_real_longpress_key(kb, lp[i], kb->pages[kb->current_page].rows[kb->sel_row][kb->sel_idx]);
@@ -984,7 +990,7 @@ static void _pdkb_page_advance(PDKeyboard* kb)
     kb->altstate = 0;
     kb->longpress_t = -1;
     kb->longpress_menu_idx = -1;
-    
+
     size_t start = kb->current_page;
     for (int i = 0; i < PDKBP_COUNT; ++i)
     {
@@ -997,6 +1003,20 @@ static void _pdkb_page_advance(PDKeyboard* kb)
             return;
         }
     }
+}
+
+static void _pdkb_play_sound(PDKeyboard* kb, PDKBSoundEvent event)
+{
+    if (kb->sound_cb && (kb->flags & PDKBF_SOUND))
+        kb->sound_cb(event, kb->sound_userdata);
+}
+
+void pdkb_set_sound_cb(PDKeyboard* kb, void (*cb)(int event, void* userdata), void* userdata)
+{
+    if (!kb)
+        return;
+    kb->sound_cb = cb;
+    kb->sound_userdata = userdata;
 }
 
 static void _pdkb_type(PDKeyboard* kb, uint32_t key)
@@ -1017,10 +1037,12 @@ static void _pdkb_type(PDKeyboard* kb, uint32_t key)
             )
             {
                 kb->shake = 10;
+                _pdkb_play_sound(kb, kPDKBSoundDenial);
             }
             else if (kb->content_max_bytes > 0 && kb->current_byte + elen > kb->content_max_bytes)
             {
                 kb->shake = 10;
+                _pdkb_play_sound(kb, kPDKBSoundDenial);
             }
             else
             {
@@ -1034,6 +1056,8 @@ static void _pdkb_type(PDKeyboard* kb, uint32_t key)
                 {
                     kb->altstate = 0;
                 }
+
+                _pdkb_play_sound(kb, kPDKBSoundKey);
             }
         }
     }
@@ -1045,28 +1069,33 @@ static void _pdkb_type(PDKeyboard* kb, uint32_t key)
             kb->current_byte = prev_byte;
             kb->content[kb->current_byte] = '\0';
             kb->current_codepoint--;
+
+            _pdkb_play_sound(kb, kPDKBSoundKey);
         }
     }
     else if (key == KEY_UPPER)
     {
         kb->altstate = (kb->altstate + 1) % 3;
+        _pdkb_play_sound(kb, kPDKBSoundMode);
     }
     else if (key == KEY_SHRINK)
     {
         kb->altstate = !kb->altstate;
+        _pdkb_play_sound(kb, kPDKBSoundMode);
     }
     else if (key == KEY_DAKUTEN || key == KEY_HANDAKUTEN)
     {
         if (kb->current_byte == 0 || kb->current_codepoint == 0)
         {
             kb->shake = 8;
+            _pdkb_play_sound(kb, kPDKBSoundDenial);
         }
         else
         {
             size_t prev_byte = _codepoint_prev(kb->content, kb->current_byte, kb->encoding);
 
             uint32_t last_cp = _decode(kb->content + prev_byte, kb->encoding, NULL);
-            
+
             uint32_t modified;
             modified = _pdkb_apply_dakuten(last_cp, key == KEY_HANDAKUTEN);
 
@@ -1085,18 +1114,21 @@ static void _pdkb_type(PDKeyboard* kb, uint32_t key)
             else
             {
                 kb->shake = 8;
+                _pdkb_play_sound(kb, kPDKBSoundDenial);
             }
         }
     }
     else if (key == KEY_CONFIRM)
     {
         kb->result = 1;
+        _pdkb_play_sound(kb, kPDKBSoundConfirm);
         pdkb_close(kb);
     }
     else if (key == KEY_SWITCH)
     {
+        _pdkb_play_sound(kb, kPDKBSoundPage);
         _pdkb_page_advance(kb);
-        
+
         // select the switch key
         for (size_t i = 0; i < MAXROWS; ++i)
         {
@@ -1121,26 +1153,26 @@ void pdkb_update(PDKeyboard* kb, float dt)
     if (kb->open_p <= 0) return;
 
     _pdkb_draw(kb);
-    
+
     if (!kb->is_open || kb->open_p < 0.5f) return;
-    
+
     PDKeyboardPage* page = &kb->pages[kb->current_page];
-    
+
     if (page->type == PDKBP_None)
     {
         _pdkb_page_advance(kb);
         return;
     }
-    
+
     PDButtons down;
     PDButtons pushed;
     PDButtons released;
     pd->system->getButtonState(&down, &pushed, &released);
-    
+
     kb->sel_down = (down & kButtonA);
-    
+
     bool release_longpress = false;
-    
+
     if (!kb->sel_down)
     {
         if (kb->longpress_t < 0)
@@ -1160,7 +1192,7 @@ void pdkb_update(PDKeyboard* kb, float dt)
             }
         }
     }
-    
+
     int dx = !!(pushed & kButtonRight) - !!(pushed & kButtonLeft);
     int dy = !!(pushed & kButtonDown) - !!(pushed & kButtonUp);
 
@@ -1188,7 +1220,7 @@ void pdkb_update(PDKeyboard* kb, float dt)
     }
 
     if (kb->longpress_menu_idx >= 0)
-    {        
+    {
         if (released & kButtonA)
         {
             uint32_t key = kb->pages[kb->current_page].rows_longpress[kb->sel_row][kb->sel_idx][kb->longpress_menu_idx];
@@ -1198,7 +1230,7 @@ void pdkb_update(PDKeyboard* kb, float dt)
             kb->longpress_t = -1;
             return;
         }
-        
+
         if (dy != 0)
         {
             kb->longpress_menu_idx = -1;
@@ -1218,6 +1250,8 @@ void pdkb_update(PDKeyboard* kb, float dt)
     {
         if (dx != 0 || dy != 0)
         {
+            _pdkb_play_sound(kb, kPDKBSoundMove);
+
             // move vertically first
             if (dy != 0)
             {
@@ -1308,14 +1342,14 @@ void pdkb_update(PDKeyboard* kb, float dt)
                 }
             }
         }
-        
+
         if ((released & kButtonB) && (kb->flags & PDKBF_CANCEL))
         {
             kb->result = -1;
             pdkb_close(kb);
             return;
         }
-        
+
         // typing
         if (released & kButtonA && kb->open_p == 1 && (!release_longpress))
         {
@@ -1338,11 +1372,11 @@ PDKeyboard* pdkb_new(PlaydateAPI* _pd, PDKeyboardFlags f, const uint32_t* leftke
     kb->flags = f;
     kb->is_jp_region = pd->system->getLanguage() == kPDLanguageJapanese;
     kb->longpress_menu_idx = -1;
-    
+
     int pagec = !!(f&(PDKBF_LATIN_LOWERCASE | PDKBF_LATIN_UPPERCASE))
         +  ((f & PDKBF_SYMBOLS) == PDKBF_SYMBOLS) + !!(f & PDKBF_NUMERIC)
         + !!(f & PDKBF_JA_HIRAGANA) + !!(f & PDKBF_JA_KATAKANA);
-        
+
     int spacekey = ' ';
     if (!(kb->flags & PDKBF_SPACE))
     {
@@ -1360,7 +1394,7 @@ PDKeyboard* pdkb_new(PlaydateAPI* _pd, PDKeyboardFlags f, const uint32_t* leftke
         kb->current_page = PDKBP_Symbols;
 
         kb->pages[PDKBP_Symbols].rows_c = 4;
-        
+
         int r = 0;
 
         kb->pages[PDKBP_Symbols].rows[r][0] = '+';
@@ -1376,7 +1410,7 @@ PDKeyboard* pdkb_new(PlaydateAPI* _pd, PDKeyboardFlags f, const uint32_t* leftke
         kb->pages[PDKBP_Symbols].rows[r][10] = KEY_EXTEND;
 
         r++;
-        
+
         kb->pages[PDKBP_Symbols].rows[r][0] = '!';
         kb->pages[PDKBP_Symbols].rows[r][1] = '?';
         kb->pages[PDKBP_Symbols].rows[r][2] = '.';
@@ -1388,7 +1422,7 @@ PDKeyboard* pdkb_new(PlaydateAPI* _pd, PDKeyboardFlags f, const uint32_t* leftke
         kb->pages[PDKBP_Symbols].rows[r][8] = '"';
         kb->pages[PDKBP_Symbols].rows[r][9] = '*';
         kb->pages[PDKBP_Symbols].rows[r][10] = '~';
-        
+
         r++;
 
         kb->pages[PDKBP_Symbols].rows[r][0] = '(';
@@ -1449,7 +1483,7 @@ PDKeyboard* pdkb_new(PlaydateAPI* _pd, PDKeyboardFlags f, const uint32_t* leftke
         kb->pages[PDKBP_Numeric].rows[2][0] = '3';
         kb->pages[PDKBP_Numeric].rows[2][1] = '2';
         kb->pages[PDKBP_Numeric].rows[2][2] = '1';
-        
+
         const bool syms = !!(kb->flags & PDKBF_LATIN_PUNCTUATION);
 
         kb->pages[PDKBP_Numeric].rows[3][0] = KEY_FILLER;
@@ -1457,7 +1491,7 @@ PDKeyboard* pdkb_new(PlaydateAPI* _pd, PDKeyboardFlags f, const uint32_t* leftke
         kb->pages[PDKBP_Numeric].rows[3][2] = '0';
         kb->pages[PDKBP_Numeric].rows[3][3] = KEY_EXTEND;
         kb->pages[PDKBP_Numeric].rows[3][4] = (syms) ? '.' : KEY_FILLER;
-        
+
         if (pagec >= 2)
         {
             kb->pages[PDKBP_Numeric].rows[3][0] = KEY_SWITCH;
@@ -1630,9 +1664,9 @@ PDKeyboard* pdkb_new(PlaydateAPI* _pd, PDKeyboardFlags f, const uint32_t* leftke
     {
         kb->pages[PDKBP_Latin].type = PDKBP_Latin;
         kb->current_page = PDKBP_Latin;
-        
+
         bool punct = !!(kb->flags & PDKBF_LATIN_PUNCTUATION);
-        
+
         kb->pages[PDKBP_Latin].rows_c = 4;
         kb->pages[PDKBP_Latin].rows[0][0] = 'a';
         kb->pages[PDKBP_Latin].rows[0][1] = 'b';
@@ -1664,14 +1698,14 @@ PDKeyboard* pdkb_new(PlaydateAPI* _pd, PDKeyboardFlags f, const uint32_t* leftke
         kb->pages[PDKBP_Latin].rows[2][7] = 'y';
         kb->pages[PDKBP_Latin].rows[2][8] = 'z';
         if (punct) kb->pages[PDKBP_Latin].rows[2][9] = '.';
-        
+
         if (!(kb->flags & PDKBF_LATIN_LOWERCASE))
         {
             for (size_t i = 0; i < MAXROWS; ++i)
             {
                 for (size_t j = 0; j < MAXROWLEN; ++j)
                 {
-                    kb->pages[PDKBP_Latin].rows[i][j] = 
+                    kb->pages[PDKBP_Latin].rows[i][j] =
                         toupper(kb->pages[PDKBP_Latin].rows[i][j]);
                 }
             }
@@ -1680,23 +1714,23 @@ PDKeyboard* pdkb_new(PlaydateAPI* _pd, PDKeyboardFlags f, const uint32_t* leftke
         {
             kb->altstate = 1;
         }
-        
+
         size_t ki = 0;
         if (pagec >= 2)
         {
             kb->pages[PDKBP_Latin].rows[3][ki++] = KEY_SWITCH;
         }
-        
+
         if (has_upper_and_lower)
         {
             kb->pages[PDKBP_Latin].rows[3][ki++] = KEY_UPPER;
         }
-        
+
         for (const uint32_t* kv = leftkeys; kv && *kv; ++kv)
         {
             kb->pages[PDKBP_Latin].rows[3][ki++] = *kv;
         }
-        
+
         kb->pages[PDKBP_Latin].rows[3][ki++] = spacekey;
         kb->pages[PDKBP_Latin].rows[3][ki++] = KEY_EXTEND;
         kb->pages[PDKBP_Latin].rows[3][ki++] = KEY_EXTEND;
@@ -1705,12 +1739,12 @@ PDKeyboard* pdkb_new(PlaydateAPI* _pd, PDKeyboardFlags f, const uint32_t* leftke
             kb->pages[PDKBP_Latin].rows[3][ki++] = KEY_EXTEND;
         if (!rightkeys)
             kb->pages[PDKBP_Latin].rows[3][ki++] = KEY_EXTEND;
-        
+
         for (const uint32_t* kv = rightkeys; kv && *kv; ++kv)
         {
             kb->pages[PDKBP_Latin].rows[3][ki++] = *kv;
         }
-        
+
         if (kb->flags & PDKBF_CONFIRM)
         {
             kb->pages[PDKBP_Latin].rows[3][ki++] = KEY_CONFIRM;
@@ -1720,7 +1754,7 @@ PDKeyboard* pdkb_new(PlaydateAPI* _pd, PDKeyboardFlags f, const uint32_t* leftke
             }
         }
     }
-    
+
     // longpress keys
     for (size_t p = 0; p < PDKBP_COUNT; ++p)
     {
@@ -1737,16 +1771,16 @@ PDKeyboard* pdkb_new(PlaydateAPI* _pd, PDKeyboardFlags f, const uint32_t* leftke
                     if (has_upper_and_lower)
                         _pdkb_lp_append(page, i, j, KEY_UPPER);
                 }
-                
+
                 uint32_t key_sg = _pdkb_apply_sutegana(key);
                 if (key_sg != key) _pdkb_lp_append(page, i, j, key_sg);
-                
+
                 key_sg = _pdkb_apply_dakuten(key, false);
                 if (key_sg != key) _pdkb_lp_append(page, i, j, key_sg);
-                
+
                 key_sg = _pdkb_apply_dakuten(key, true);
                 if (key_sg != key) _pdkb_lp_append(page, i, j, key_sg);
-                
+
                 if ((page->type == PDKBP_JA_Hiragana && (f & PDKBF_JA_KATAKANA))
                     || (page->type == PDKBP_JA_Katakana && (f & PDKBF_JA_HIRAGANA))
                 )
@@ -1766,7 +1800,7 @@ PDKeyboard* pdkb_new(PlaydateAPI* _pd, PDKeyboardFlags f, const uint32_t* leftke
                         if (key_sg != key2) _pdkb_lp_append(page, i, j, key_sg);
                     }
                 }
-                    
+
                 switch(key)
                 {
                 case ' ':
@@ -1868,7 +1902,7 @@ PDKeyboard* pdkb_new(PlaydateAPI* _pd, PDKeyboardFlags f, const uint32_t* leftke
                         if (f & PDKBF_JA_HIRAGANA)
                         {
                             _pdkb_lp_append(page, i, j, U'ゐ');
-                                
+
                         }
                     }
                     break;
@@ -1905,7 +1939,7 @@ PDKeyboard* pdkb_new(PlaydateAPI* _pd, PDKeyboardFlags f, const uint32_t* leftke
 void pdkb_free(PDKeyboard* kb)
 {
     if (!kb) return;
-    
+
     if (kb->is_open)
     {
         pd->system->logToConsole("pdkb:free-unclosed");
@@ -2013,7 +2047,7 @@ void pdkb_open(PDKeyboard* kb)
     {
         pd->system->logToConsole("pdkb:open");
     }
-    
+
     kb->is_open = true;
     if (kb->animation_duration <= 0.0f)
     {
@@ -2027,7 +2061,7 @@ void pdkb_close(PDKeyboard* kb)
     {
         pd->system->logToConsole("pdkb:close");
     }
-    
+
     kb->is_open = false;
     if (kb->animation_duration <= 0.0f)
     {

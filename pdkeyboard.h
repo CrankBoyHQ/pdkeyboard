@@ -32,7 +32,7 @@ enum PDKeyboardFlags {
 
     /* user can cancel out (closes keyboard) */
     PDKBF_CANCEL = 0x2000,
-    
+
     /* Start in uppercase */
     PDKBF_START_UPPERCASE = 0x4001,
 
@@ -47,7 +47,7 @@ enum PDKeyboardFlags {
 
     PDKBF_NUMERIC = 0x10, /* allow numbers 0-9 */
     PDKBF_SYMBOLS = 0x28, /* allow various special symbols @#$%^&*{}[]+~<> (including punctuation) */
-    
+
     /* The following are ignored if the encoding scheme is set to ASCII. */
     PDKBF_JA_HIRAGANA = 0x10000,
     PDKBF_JA_KATAKANA = 0x20000,
@@ -65,8 +65,20 @@ enum PDKeyboardFlags {
 };
 typedef enum PDKeyboardFlags PDKeyboardFlags;
 
+/* Sound feedback events, passed to the optional sound_cb hook.
+ * Only fires when PDKBF_SOUND was set at creation. */
+enum PDKBSoundEvent {
+    kPDKBSoundKey,     /* character typed or backspace applied */
+    kPDKBSoundMove,    /* key selector moved between keys */
+    kPDKBSoundMode,    /* state latches: uppercase, small kana, dakuten */
+    kPDKBSoundPage,    /* page switch */
+    kPDKBSoundConfirm, /* confirm key (closes the keyboard) */
+    kPDKBSoundDenial,  /* content limit hit, orphan dakuten */
+};
+typedef enum PDKBSoundEvent PDKBSoundEvent;
+
 /* After creating a keyboard, you can use pdkb_open() and pdkb_close() to show/hide it.
- * 
+ *
  * While the keyboard exists, invoke pdkb_update(kb) once per frame
  * (even if the keyboard has been closed.)
  *
@@ -74,6 +86,10 @@ typedef enum PDKeyboardFlags PDKeyboardFlags;
  * (Only for latin keyboard.)
 */
 PDKeyboard* pdkb_new(PlaydateAPI* pd, PDKeyboardFlags, const uint32_t* special_leftkeys, const uint32_t* special_rightkeys);
+
+/* Optional audio feedback hook. Only fires if the keyboard was created
+ * with PDKBF_SOUND. Use the PDKBSoundEvent enum for events. (NULL cb = silent.) */
+void pdkb_set_sound_cb(PDKeyboard* kb, void (*cb)(int event, void* userdata), void* userdata);
 
 /* Delete keyboard. Cleans up resources. */
 void pdkb_free(PDKeyboard* kb);
@@ -94,12 +110,12 @@ int pdkb_get_result(const PDKeyboard* kb);
  * Set the character encoding to be used in the output buffer.
  *
  * If set to "ascii", some keyboard flags (like japanese characters) will be ignored.
- * 
+ *
  * recognized values:
  * - "ascii"
  * - "utf8" (default)
  * - "le16"
- * 
+ *
  * returns 0 on failure.
  */
 int pdkb_set_encoding(PDKeyboard* kb, const char* encoding);
@@ -129,13 +145,13 @@ unsigned pdkb_get_content_length_bytes(const PDKeyboard* kb);
 unsigned pdkb_get_content_length_codepoints(const PDKeyboard* kb);
 
 /* Sets the maximum size of output buffer in bytes.
- * 
+ *
  * Overrides pdkb_set_max_codepoints.
  */
 void pdkb_set_max_bytes(PDKeyboard* kb, unsigned);
 
 /* Sets the maximum size of output buffer in codepoints (e.g. unicode characters).
- * 
+ *
  * Overrides pdkb_set_max_bytes.
  */
 void pdkb_set_max_codepoints(PDKeyboard* kb, unsigned);
@@ -162,7 +178,7 @@ PDKeyboardState pdkb_get_state(const PDKeyboard* kb);
 */
 float pdkb_get_open_p(const PDKeyboard* kb);
 
-/* 
+/*
  * Gets the y value of the top of the keyboard.
  * When closed, this is LCD_ROWS.
  * When open, this is PDKB_HEIGHT.
