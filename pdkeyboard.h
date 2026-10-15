@@ -13,6 +13,8 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #ifndef _PD_KEYBOARD_H_
 #define _PD_KEYBOARD_H_
 
+#include "pd_api.h"
+
 typedef struct PlaydateAPI PlaydateAPI;
 typedef struct PDKeyboard PDKeyboard;
 
